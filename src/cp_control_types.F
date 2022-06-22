@@ -349,6 +349,7 @@ MODULE cp_control_types
       LOGICAL                              :: high_level_embed_subsys
       LOGICAL                              :: dfet_embedded
       LOGICAL                              :: dmfet_embedded
+      LOGICAL                              :: pbpe_embedded
    END TYPE qs_control_type
 
 ! **************************************************************************************************

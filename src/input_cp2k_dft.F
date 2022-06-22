@@ -2990,6 +2990,13 @@ CONTAINS
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 
+      CALL keyword_create(keyword, __LOCATION__, name="PBPE_EMBEDDED", &
+                          description="Calculation with projection-base periodic embedding potential. ", &
+                          usage="PBPE_EMBEDDED FALSE", &
+                          default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
       ! Integers
       CALL keyword_create(keyword, __LOCATION__, name="STO_NG", &
                           description="Order of Gaussian type expansion of Slater orbital basis sets.", &

@@ -86,7 +86,7 @@ MODULE force_env_methods
                                               globenv_retain
    USE grrm_utils,                      ONLY: write_grrm
    USE input_constants,                 ONLY: &
-        debug_run, dfet, dmfet, mix_cdft, mix_coupled, mix_generic, mix_linear_combination, &
+        debug_run, dfet, dmfet, pbpe, mix_cdft, mix_coupled, mix_generic, mix_linear_combination, &
         mix_minimum, mix_restrained, mixed_cdft_serial, use_bazant_eip, use_lenosky_eip
    USE input_section_types,             ONLY: section_vals_get_subs_vals,&
                                               section_vals_retain,&
@@ -1594,6 +1594,9 @@ CONTAINS
       CASE (dmfet)
          ! Density matrix embedding theory
          CALL dmfet_embedding(force_env, ref_subsys_number, energies, converged_embed)
+      CASE (pbpe)
+         ! Projection-based periodic embedding
+         CALL dfet_embedding(force_env, ref_subsys_number, energies, converged_embed)
       END SELECT
 
    END SUBROUTINE dft_embedding
