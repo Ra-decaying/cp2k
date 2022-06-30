@@ -19,6 +19,7 @@ MODULE force_env_methods
                                               atprop_type
    USE bibliography,                    ONLY: Heaton_Burgess2007,&
                                               Huang2011,&
+                                              Chulhai2018,&
                                               cite_reference
    USE cell_types,                      ONLY: cell_clone,&
                                               cell_create,&
@@ -1596,7 +1597,7 @@ CONTAINS
          CALL dmfet_embedding(force_env, ref_subsys_number, energies, converged_embed)
       CASE (pbpe)
          ! Projection-based periodic embedding
-         CALL dfet_embedding(force_env, ref_subsys_number, energies, converged_embed)
+         CALL pbpe_embedding(force_env, ref_subsys_number, energies, converged_embed)
       END SELECT
 
    END SUBROUTINE dft_embedding
@@ -2154,5 +2155,406 @@ CONTAINS
       converged_embed = .FALSE.
 
    END SUBROUTINE dmfet_embedding
+
+! **************************************************************************************************
+!> \brief Main driver for the PBPE embedding
+!> \param force_env ...
+!> \param ref_subsys_number ...
+!> \param energies ...
+!> \param converged_embed ...
+!> \author Jianhao Li
+! **************************************************************************************************
+   SUBROUTINE pbpe_embedding(force_env, ref_subsys_number, energies, converged_embed)
+      TYPE(force_env_type), POINTER                      :: force_env
+      INTEGER                                            :: ref_subsys_number
+      REAL(KIND=dp), DIMENSION(:), POINTER               :: energies
+      LOGICAL                                            :: converged_embed
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'dfet_embedding'
+
+      INTEGER                                            :: cluster_subsys_num, handle, &
+                                                            i_force_eval, i_iter, i_spin, &
+                                                            nforce_eval, nspins, nspins_subsys, &
+                                                            output_unit
+      REAL(KIND=dp)                                      :: cluster_energy
+      REAL(KIND=dp), DIMENSION(:), POINTER               :: rhs
+      TYPE(cp_logger_type), POINTER                      :: logger
+      TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(opt_embed_pot_type)                           :: opt_embed
+      TYPE(pw_env_type), POINTER                         :: pw_env
+      TYPE(pw_p_type), DIMENSION(:), POINTER             :: rho_r_ref, rho_r_subsys
+      TYPE(pw_p_type), POINTER                           :: diff_rho_r, diff_rho_spin, embed_pot, &
+                                                            embed_pot_subsys, spin_embed_pot, &
+                                                            spin_embed_pot_subsys
+      TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
+      TYPE(qs_energy_type), POINTER                      :: energy
+      TYPE(qs_rho_type), POINTER                         :: rho, subsys_rho
+      TYPE(section_vals_type), POINTER                   :: dft_section, embed_section, &
+                                                            force_env_section, input, &
+                                                            mapping_section, opt_embed_section
+
+      CALL timeset(routineN, handle)
+
+      CALL cite_reference(Huang2011)
+      CALL cite_reference(Heaton_Burgess2007)
+      CALL cite_reference(Chulhai2018)
+
+      CALL get_qs_env(qs_env=force_env%sub_force_env(ref_subsys_number)%force_env%qs_env)
+
+      ! Reveal input file
+      NULLIFY (logger)
+      logger => cp_get_default_logger()
+      output_unit = cp_print_key_unit_nr(logger, force_env%force_env_section, "PRINT%PROGRAM_RUN_INFO", &
+                                         extension=".Log")
+
+      NULLIFY (dft_section, input, opt_embed_section)
+      NULLIFY (energy, dft_control)
+
+      CALL get_qs_env(qs_env=force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, &
+                      pw_env=pw_env, dft_control=dft_control, rho=rho, energy=energy, &
+                      input=input)
+      nspins = dft_control%nspins
+
+      dft_section => section_vals_get_subs_vals(input, "DFT")
+      opt_embed_section => section_vals_get_subs_vals(input, &
+                                                      "DFT%QS%OPT_EMBED")
+      ! Rho_r is the reference
+      CALL qs_rho_get(rho_struct=rho, rho_r=rho_r_ref)
+
+      ! We need to understand how to treat spins states
+      CALL understand_spin_states(force_env, ref_subsys_number, opt_embed%change_spin, opt_embed%open_shell_embed, &
+                                  opt_embed%all_nspins)
+
+      ! Prepare everything for the potential maximization
+      CALL prepare_embed_opt(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, opt_embed, &
+                             opt_embed_section)
+
+      ! Initialize embedding potential
+      CALL init_embed_pot(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, embed_pot, &
+                          opt_embed%add_const_pot, opt_embed%Fermi_Amaldi, opt_embed%const_pot, &
+                          opt_embed%open_shell_embed, spin_embed_pot, &
+                          opt_embed%pot_diff, opt_embed%Coulomb_guess, opt_embed%grid_opt)
+
+      ! Read embedding potential vector from the file
+      IF (opt_embed%read_embed_pot .OR. opt_embed%read_embed_pot_cube) CALL read_embed_pot( &
+         force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, embed_pot, spin_embed_pot, &
+         opt_embed_section, opt_embed)
+
+      ! Prepare the pw object to store density differences
+      CALL pw_env_get(pw_env, auxbas_pw_pool=auxbas_pw_pool)
+      NULLIFY (diff_rho_r)
+      ALLOCATE (diff_rho_r)
+      NULLIFY (diff_rho_r%pw)
+      CALL pw_pool_create_pw(auxbas_pw_pool, diff_rho_r%pw, &
+                             use_data=REALDATA3D, &
+                             in_space=REALSPACE)
+      CALL pw_zero(diff_rho_r%pw)
+      IF (opt_embed%open_shell_embed) THEN
+         NULLIFY (diff_rho_spin)
+         ALLOCATE (diff_rho_spin)
+         NULLIFY (diff_rho_spin%pw)
+         CALL pw_pool_create_pw(auxbas_pw_pool, diff_rho_spin%pw, &
+                                use_data=REALDATA3D, &
+                                in_space=REALSPACE)
+         CALL pw_zero(diff_rho_spin%pw)
+      END IF
+
+      ! Check the preliminary density differences
+      DO i_spin = 1, nspins
+         diff_rho_r%pw%cr3d(:, :, :) = diff_rho_r%pw%cr3d(:, :, :) - rho_r_ref(i_spin)%pw%cr3d(:, :, :)
+      END DO
+      IF (opt_embed%open_shell_embed) THEN ! Spin part
+         IF (nspins .EQ. 2) THEN ! Reference systems has an open shell, else the reference diff_rho_spin is zero
+            diff_rho_spin%pw%cr3d(:, :, :) = diff_rho_spin%pw%cr3d(:, :, :) - rho_r_ref(1)%pw%cr3d(:, :, :) &
+                                             + rho_r_ref(2)%pw%cr3d(:, :, :)
+         END IF
+      END IF
+
+      DO i_force_eval = 1, ref_subsys_number - 1
+         NULLIFY (subsys_rho, rho_r_subsys, dft_control)
+         CALL get_qs_env(force_env%sub_force_env(i_force_eval)%force_env%qs_env, rho=subsys_rho, energy=energy, &
+                         dft_control=dft_control)
+         nspins_subsys = dft_control%nspins
+         ! Add subsystem densities
+         CALL qs_rho_get(rho_struct=subsys_rho, rho_r=rho_r_subsys)
+         DO i_spin = 1, nspins_subsys
+            diff_rho_r%pw%cr3d(:, :, :) = diff_rho_r%pw%cr3d(:, :, :) + rho_r_subsys(i_spin)%pw%cr3d(:, :, :)
+         END DO
+         IF (opt_embed%open_shell_embed) THEN ! Spin part
+            IF (nspins_subsys .EQ. 2) THEN ! The subsystem makes contribution if it is spin-polarized
+               ! We may need to change spin ONLY FOR THE SECOND SUBSYSTEM: that's the internal convention
+               IF ((i_force_eval .EQ. 2) .AND. (opt_embed%change_spin)) THEN
+                  diff_rho_spin%pw%cr3d(:, :, :) = diff_rho_spin%pw%cr3d(:, :, :) - &
+                                                   rho_r_subsys(1)%pw%cr3d(:, :, :) + rho_r_subsys(2)%pw%cr3d(:, :, :)
+               ELSE
+                  ! First subsystem (always) and second subsystem (without spin change)
+                  diff_rho_spin%pw%cr3d(:, :, :) = diff_rho_spin%pw%cr3d(:, :, :) + &
+                                                   rho_r_subsys(1)%pw%cr3d(:, :, :) - rho_r_subsys(2)%pw%cr3d(:, :, :)
+               END IF
+            END IF
+         END IF
+      END DO
+
+      ! Print density difference
+      CALL print_rho_diff(diff_rho_r, 0, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, .FALSE.)
+      IF (opt_embed%open_shell_embed) THEN ! Spin part
+         CALL print_rho_spin_diff(diff_rho_spin, 0, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, .FALSE.)
+      END IF
+
+      ! Construct electrostatic guess if needed
+      IF (opt_embed%Coulomb_guess) THEN
+         ! Reveal resp charges for total system
+         nforce_eval = SIZE(force_env%sub_force_env)
+         NULLIFY (rhs)
+         CALL get_qs_env(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, rhs=rhs)
+         ! Get the mapping
+         CALL force_env_get(force_env=force_env, &
+                            force_env_section=force_env_section)
+         embed_section => section_vals_get_subs_vals(force_env_section, "EMBED")
+         mapping_section => section_vals_get_subs_vals(embed_section, "MAPPING")
+
+         DO i_force_eval = 1, ref_subsys_number - 1
+            IF (i_force_eval .EQ. 1) THEN
+               CALL Coulomb_guess(embed_pot, rhs, mapping_section, &
+                                  force_env%sub_force_env(i_force_eval)%force_env%qs_env, nforce_eval, i_force_eval, opt_embed%eta)
+            ELSE
+               CALL Coulomb_guess(opt_embed%pot_diff, rhs, mapping_section, &
+                                  force_env%sub_force_env(i_force_eval)%force_env%qs_env, nforce_eval, i_force_eval, opt_embed%eta)
+            END IF
+         END DO
+         embed_pot%pw%cr3d(:, :, :) = embed_pot%pw%cr3d(:, :, :) + opt_embed%pot_diff%pw%cr3d(:, :, :)
+         IF (.NOT. opt_embed%grid_opt) CALL pw_copy(embed_pot%pw, opt_embed%const_pot%pw)
+
+      END IF
+
+      ! Difference guess
+      IF (opt_embed%diff_guess) THEN
+         embed_pot%pw%cr3d(:, :, :) = diff_rho_r%pw%cr3d(:, :, :)
+         IF (.NOT. opt_embed%grid_opt) CALL pw_copy(embed_pot%pw, opt_embed%const_pot%pw)
+         ! Open shell
+         IF (opt_embed%open_shell_embed) spin_embed_pot%pw%cr3d(:, :, :) = diff_rho_spin%pw%cr3d(:, :, :)
+      END IF
+
+      ! Calculate subsystems with trial embedding potential
+      DO i_iter = 1, opt_embed%n_iter
+         opt_embed%i_iter = i_iter
+
+         ! Set the density difference as the negative reference one
+         CALL pw_zero(diff_rho_r%pw)
+         CALL get_qs_env(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, dft_control=dft_control)
+         nspins = dft_control%nspins
+         DO i_spin = 1, nspins
+            diff_rho_r%pw%cr3d(:, :, :) = diff_rho_r%pw%cr3d(:, :, :) - rho_r_ref(i_spin)%pw%cr3d(:, :, :)
+         END DO
+         IF (opt_embed%open_shell_embed) THEN ! Spin part
+            CALL pw_zero(diff_rho_spin%pw)
+            IF (nspins .EQ. 2) THEN ! Reference systems has an open shell, else the reference diff_rho_spin is zero
+               diff_rho_spin%pw%cr3d(:, :, :) = diff_rho_spin%pw%cr3d(:, :, :) - rho_r_ref(1)%pw%cr3d(:, :, :) &
+                                                + rho_r_ref(2)%pw%cr3d(:, :, :)
+            END IF
+         END IF
+
+         DO i_force_eval = 1, ref_subsys_number - 1
+            NULLIFY (dft_control)
+            CALL get_qs_env(force_env%sub_force_env(i_force_eval)%force_env%qs_env, dft_control=dft_control)
+            nspins_subsys = dft_control%nspins
+
+            IF ((i_force_eval .EQ. 2) .AND. (opt_embed%change_spin)) THEN
+               ! Here we change the sign of the spin embedding potential due to spin change:
+               ! only in spin_embed_subsys
+               CALL make_subsys_embed_pot(force_env%sub_force_env(i_force_eval)%force_env%qs_env, &
+                                          embed_pot, embed_pot_subsys, spin_embed_pot, spin_embed_pot_subsys, &
+                                          opt_embed%open_shell_embed, .TRUE.)
+            ELSE ! Regular case
+               CALL make_subsys_embed_pot(force_env%sub_force_env(i_force_eval)%force_env%qs_env, &
+                                          embed_pot, embed_pot_subsys, spin_embed_pot, spin_embed_pot_subsys, &
+                                          opt_embed%open_shell_embed, .FALSE.)
+            END IF
+
+            ! Subtract Coulomb potential difference if needed
+            !  IF ((i_force_eval .EQ. 2) .AND. (opt_embed%Coulomb_guess)) THEN
+            !     embed_pot_subsys%pw%cr3d(:, :, :) = embed_pot_subsys%pw%cr3d(:, :, :)-opt_embed%pot_diff%pw%cr3d(:, :, :)
+            !  ENDIF
+
+            ! Switch on external potential in the subsystems
+            dft_control%apply_embed_pot = .TRUE.
+
+            ! Add the embedding potential
+            CALL set_qs_env(force_env%sub_force_env(i_force_eval)%force_env%qs_env, embed_pot=embed_pot_subsys)
+            IF ((opt_embed%open_shell_embed) .AND. (nspins_subsys .EQ. 2)) THEN ! Spin part
+               CALL set_qs_env(force_env%sub_force_env(i_force_eval)%force_env%qs_env, &
+                               spin_embed_pot=spin_embed_pot_subsys)
+            END IF
+
+            ! Get the previous subsystem densities
+            CALL get_prev_density(opt_embed, force_env%sub_force_env(i_force_eval)%force_env, i_force_eval)
+
+            ! Calculate the new density
+            CALL force_env_calc_energy_force(force_env=force_env%sub_force_env(i_force_eval)%force_env, &
+                                             calc_force=.FALSE., &
+                                             skip_external_control=.TRUE.)
+
+            CALL get_max_subsys_diff(opt_embed, force_env%sub_force_env(i_force_eval)%force_env, i_force_eval)
+
+            ! Extract subsystem density and energy
+            NULLIFY (rho_r_subsys, energy)
+
+            CALL get_qs_env(force_env%sub_force_env(i_force_eval)%force_env%qs_env, rho=subsys_rho, &
+                            energy=energy)
+            opt_embed%w_func(i_iter) = opt_embed%w_func(i_iter) + energy%total
+
+            ! Find out which subsystem is the cluster
+            IF (dft_control%qs_control%cluster_embed_subsys) THEN
+               cluster_subsys_num = i_force_eval
+               cluster_energy = energy%total
+            END IF
+
+            ! Add subsystem densities
+            CALL qs_rho_get(rho_struct=subsys_rho, rho_r=rho_r_subsys)
+            DO i_spin = 1, nspins_subsys
+               diff_rho_r%pw%cr3d(:, :, :) = diff_rho_r%pw%cr3d(:, :, :) + rho_r_subsys(i_spin)%pw%cr3d(:, :, :)
+            END DO
+            IF (opt_embed%open_shell_embed) THEN ! Spin part
+               IF (nspins_subsys .EQ. 2) THEN ! The subsystem makes contribution if it is spin-polarized
+                  ! We may need to change spin ONLY FOR THE SECOND SUBSYSTEM: that's the internal convention
+                  IF ((i_force_eval .EQ. 2) .AND. (opt_embed%change_spin)) THEN
+                     diff_rho_spin%pw%cr3d(:, :, :) = diff_rho_spin%pw%cr3d(:, :, :) - &
+                                                      rho_r_subsys(1)%pw%cr3d(:, :, :) + rho_r_subsys(2)%pw%cr3d(:, :, :)
+                  ELSE
+                     ! First subsystem (always) and second subsystem (without spin change)
+                     diff_rho_spin%pw%cr3d(:, :, :) = diff_rho_spin%pw%cr3d(:, :, :) + &
+                                                      rho_r_subsys(1)%pw%cr3d(:, :, :) - rho_r_subsys(2)%pw%cr3d(:, :, :)
+                  END IF
+               END IF
+            END IF
+
+            ! Release embedding potential for subsystem
+            CALL pw_release(embed_pot_subsys%pw)
+            DEALLOCATE (embed_pot_subsys)
+            IF (opt_embed%open_shell_embed) THEN
+               CALL pw_release(spin_embed_pot_subsys%pw)
+               DEALLOCATE (spin_embed_pot_subsys)
+            END IF
+
+         END DO ! i_force_eval
+
+         ! Print embedding potential for restart
+         CALL print_embed_restart(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, &
+                                  opt_embed%dimen_aux, opt_embed%embed_pot_coef, embed_pot, i_iter, &
+                                  spin_embed_pot, opt_embed%open_shell_embed, opt_embed%grid_opt, .FALSE.)
+         CALL print_pot_simple_grid(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, &
+                                    embed_pot, spin_embed_pot, i_iter, opt_embed%open_shell_embed, .FALSE., &
+                                    force_env%sub_force_env(cluster_subsys_num)%force_env%qs_env)
+
+         ! Integrate the potential over density differences and add to w functional; also add regularization contribution
+         DO i_spin = 1, nspins ! Sum over nspins for the reference system, not subsystem!
+            opt_embed%w_func(i_iter) = opt_embed%w_func(i_iter) - pw_integral_ab(embed_pot%pw, rho_r_ref(i_spin)%pw)
+         END DO
+         ! Spin part
+         IF (opt_embed%open_shell_embed) THEN
+            ! If reference system is not spin-polarized then it does not make a contribution to W functional
+            IF (nspins .EQ. 2) THEN
+               opt_embed%w_func(i_iter) = opt_embed%w_func(i_iter) &
+                                          - pw_integral_ab(spin_embed_pot%pw, rho_r_ref(1)%pw) &
+                                          + pw_integral_ab(spin_embed_pot%pw, rho_r_ref(2)%pw)
+            END IF
+         END IF
+         ! Finally, add the regularization term
+         opt_embed%w_func(i_iter) = opt_embed%w_func(i_iter) + opt_embed%reg_term
+
+         ! Print information and check convergence
+         CALL print_emb_opt_info(output_unit, i_iter, opt_embed)
+         CALL conv_check_embed(opt_embed, diff_rho_r, diff_rho_spin, output_unit)
+         IF (opt_embed%converged) EXIT
+
+         ! Update the trust radius and control the step
+         IF ((i_iter .GT. 1) .AND. (.NOT. opt_embed%steep_desc)) CALL step_control(opt_embed)
+
+         ! Print density difference
+         CALL print_rho_diff(diff_rho_r, i_iter, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, .FALSE.)
+         IF (opt_embed%open_shell_embed) THEN ! Spin part
+            CALL print_rho_spin_diff(diff_rho_spin, i_iter, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, .FALSE.)
+         END IF
+
+         ! Calculate potential gradient if the step has been accepted. Otherwise, we reuse the previous one
+
+         IF (opt_embed%accept_step .AND. (.NOT. opt_embed%grid_opt)) &
+            CALL calculate_embed_pot_grad(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, &
+                                          diff_rho_r, diff_rho_spin, opt_embed)
+         ! Take the embedding step
+         CALL opt_embed_step(diff_rho_r, diff_rho_spin, opt_embed, embed_pot, spin_embed_pot, rho_r_ref, &
+                             force_env%sub_force_env(ref_subsys_number)%force_env%qs_env)
+
+      END DO ! i_iter
+
+      ! Print final embedding potential for restart
+      CALL print_embed_restart(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, &
+                               opt_embed%dimen_aux, opt_embed%embed_pot_coef, embed_pot, i_iter, &
+                               spin_embed_pot, opt_embed%open_shell_embed, opt_embed%grid_opt, .TRUE.)
+      CALL print_pot_simple_grid(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, &
+                                 embed_pot, spin_embed_pot, i_iter, opt_embed%open_shell_embed, .TRUE., &
+                                 force_env%sub_force_env(cluster_subsys_num)%force_env%qs_env)
+
+      ! Print final density difference
+      !CALL print_rho_diff(diff_rho_r, i_iter, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, .TRUE.)
+      IF (opt_embed%open_shell_embed) THEN ! Spin part
+         CALL print_rho_spin_diff(diff_rho_spin, i_iter, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, .TRUE.)
+      END IF
+
+      ! Give away plane waves pools
+      CALL pw_release(diff_rho_r%pw)
+      DEALLOCATE (diff_rho_r)
+      IF (opt_embed%open_shell_embed) THEN
+         CALL pw_release(diff_rho_spin%pw)
+         DEALLOCATE (diff_rho_spin)
+      END IF
+
+      CALL cp_print_key_finished_output(output_unit, logger, force_env%force_env_section, &
+                                        "PRINT%PROGRAM_RUN_INFO")
+
+      ! If converged send the embedding potential to the higher-level calculation.
+      IF (opt_embed%converged) THEN
+         CALL get_qs_env(force_env%sub_force_env(ref_subsys_number + 1)%force_env%qs_env, dft_control=dft_control, &
+                         pw_env=pw_env)
+         nspins_subsys = dft_control%nspins
+         dft_control%apply_embed_pot = .TRUE.
+         ! The embedded subsystem corresponds to subsystem #2, where spin change is possible
+         CALL make_subsys_embed_pot(force_env%sub_force_env(ref_subsys_number + 1)%force_env%qs_env, &
+                                    embed_pot, embed_pot_subsys, spin_embed_pot, spin_embed_pot_subsys, &
+                                    opt_embed%open_shell_embed, opt_embed%change_spin)
+
+         IF (opt_embed%Coulomb_guess) THEN
+            embed_pot_subsys%pw%cr3d(:, :, :) = embed_pot_subsys%pw%cr3d(:, :, :) - opt_embed%pot_diff%pw%cr3d(:, :, :)
+         END IF
+
+         CALL set_qs_env(force_env%sub_force_env(ref_subsys_number + 1)%force_env%qs_env, embed_pot=embed_pot_subsys)
+
+         IF ((opt_embed%open_shell_embed) .AND. (nspins_subsys .EQ. 2)) THEN
+            CALL set_qs_env(force_env%sub_force_env(ref_subsys_number + 1)%force_env%qs_env, &
+                            spin_embed_pot=spin_embed_pot_subsys)
+         END IF
+
+         ! Substitute the correct energy in energies: only on rank 0
+         IF (force_env%sub_force_env(cluster_subsys_num)%force_env%para_env%ionode) THEN
+            energies(cluster_subsys_num) = cluster_energy
+         END IF
+      END IF
+
+      ! Deallocate and release opt_embed content
+      CALL release_opt_embed(opt_embed)
+
+      ! Deallocate embedding potential
+      CALL pw_release(embed_pot%pw)
+      DEALLOCATE (embed_pot)
+      IF (opt_embed%open_shell_embed) THEN
+         CALL pw_release(spin_embed_pot%pw)
+         DEALLOCATE (spin_embed_pot)
+      END IF
+
+      converged_embed = opt_embed%converged
+
+      CALL timestop(handle)
+
+   END SUBROUTINE pbpe_embedding
 
 END MODULE force_env_methods

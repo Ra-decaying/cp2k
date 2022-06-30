@@ -11,7 +11,8 @@
 ! **************************************************************************************************
 MODULE input_cp2k_embed
    USE bibliography,                    ONLY: Heaton_Burgess2007,&
-                                              Huang2011
+                                              Huang2011,&
+                                              Chulhai2018
    USE cp_output_handling,              ONLY: add_last_numeric,&
                                               cp_print_key_section_create,&
                                               low_print_level
@@ -56,7 +57,7 @@ CONTAINS
                           description="This section contains all information to run embedded "// &
                           "calculations.", &
                           n_keywords=1, n_subsections=0, repeats=.FALSE., &
-                          citations=(/Huang2011, Heaton_Burgess2007/))
+                          citations=(/Huang2011, Heaton_Burgess2007, Chulhai2018/))
       NULLIFY (keyword, subsection)
 
       CALL keyword_create(keyword, __LOCATION__, name="EMBED_METHOD", &
