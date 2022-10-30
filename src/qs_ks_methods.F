@@ -1117,6 +1117,7 @@ CONTAINS
       do_rebuild = do_rebuild .OR. potential_changed
       do_rebuild = do_rebuild .OR. (c_forces .AND. .NOT. forces_up_to_date)
 
+      !CPASSERT(.NOT. print_active)
       IF (do_rebuild) THEN
          CALL evaluate_core_matrix_traces(qs_env)
 
@@ -1199,6 +1200,10 @@ CONTAINS
       NULLIFY (dft_control)
 
       CALL get_qs_env(qs_env, dft_control=dft_control)
+
+      CPASSERT(.NOT. dft_control%qs_control%semi_empirical)
+      CPASSERT(.NOT. dft_control%qs_control%dftb)
+      CPASSERT(.NOT. dft_control%qs_control%xtb)
 
       IF (dft_control%qs_control%semi_empirical) THEN
          CALL build_se_fock_matrix(qs_env, &
