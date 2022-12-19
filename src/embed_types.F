@@ -13,7 +13,8 @@ MODULE embed_types
    USE cell_types,                      ONLY: cell_release,&
                                               cell_retain,&
                                               cell_type
-   USE cp_fm_types,                     ONLY: cp_fm_type
+   USE cp_fm_types,                     ONLY: cp_fm_p_type,&
+                                              cp_fm_type
    USE cp_log_handling,                 ONLY: cp_logger_p_type,&
                                               cp_logger_release
    USE cp_para_env,                     ONLY: cp_para_env_release,&
@@ -49,7 +50,7 @@ MODULE embed_types
 
    IMPLICIT NONE
    PRIVATE
-   PUBLIC :: opt_embed_pot_type, opt_dmfet_pot_type, embed_env_type
+   PUBLIC :: opt_embed_pot_type, opt_dmfet_pot_type, opt_pbpe_pot_type, embed_env_type
 
 ! *** Public subroutines ***
 
@@ -110,6 +111,40 @@ MODULE embed_types
       INTEGER, ALLOCATABLE, DIMENSION(:)        :: all_nspins
 
    END TYPE opt_dmfet_pot_type
+
+! **************************************************************************************************
+!> \brief Type containing main data for projection-based periodic embedding potential optimization
+!> \author Jianhao Li
+! **************************************************************************************************
+
+   TYPE opt_pbpe_pot_type
+      INTEGER                                          :: i_iter, n_iter, &
+                                                          cluster_subsys_num, environment_subsys_num, &
+                                                          high_level_subsys_num, ref_subsys_num
+      INTEGER, ALLOCATABLE, DIMENSION(:)               :: all_nspins, naos, nmos
+      LOGICAL                                          :: abs_localization, change_spin, converged, &
+                                                          do_kpoints, open_shell_embed
+      REAL(KIND=dp)                                    :: conv_max, conv_rmse, &
+                                                          HOMO_energy_A, HOMO_energy_B, &
+                                                          norm_D_A_diff, norm_D_B_diff
+      REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)         :: max_diff
+      TYPE(cp_fm_type), POINTER                        :: dm_1, dm_2, dm_total, &
+                                                          dm_1_beta, dm_2_beta, dm_total_beta, &
+                                                          dm_1_diff, dm_2_diff, dm_total_diff, &
+                                                          dm_1_diff_beta, dm_2_diff_beta, dm_total_diff_beta, &
+                                                          dm_cluster, dm_environment, &
+                                                          dm_cluster_beta, dm_environment_beta, &
+                                                          dm_cluster_diff, dm_environment_diff, &
+                                                          dm_cluster_diff_beta, dm_environment_diff_beta, &
+                                                          S_total, KS_total, S_1, S_2, &
+                                                          KS_1, KS_2, KS_1_in_2, KS_2_in_1, &
+                                                          S_12, S_21, KS_12, KS_21, &
+                                                          work1_1, work1_2, work2_1, work2_2, &
+                                                          ortho_1, ortho_2, P_1, P_2, P_environment
+                                                          
+
+      TYPE(cp_fm_p_type), ALLOCATABLE, DIMENSION(:)    :: mo_coeffs
+   END TYPE opt_pbpe_pot_type
 
 ! **************************************************************************************************
 !> \brief Embedding environment type

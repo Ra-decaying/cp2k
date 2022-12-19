@@ -451,8 +451,6 @@ CONTAINS
 
       scf_outer_loop: DO
 
-         WRITE (output_unit, '(A)') "SSCCFF_OOUUTT_LLOOPP"
-
          CALL init_scf_loop(scf_env=scf_env, qs_env=qs_env, &
                             scf_section=scf_section)
 
@@ -470,9 +468,6 @@ CONTAINS
             END IF
          END IF
          scf_loop: DO
-
-            WRITE (output_unit, '(A)') "SSCCFF_LLOOPP"
-            WRITE (output_unit, '(A, L)') "ENERGY_ONLY??=", energy_only
 
             CALL timeset(routineN//"_inner_loop", handle2)
 
