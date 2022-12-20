@@ -81,7 +81,7 @@ MODULE bibliography
                             Bates2013, Andermatt2016, Zhu2016, Schuett2016, Lu2004, &
                             Becke1988b, Migliore2009, Mavros2015, Holmberg2017, Marek2014, &
                             Stoychev2016, Futera2017, Bailey2006, Papior2017, Lehtola2018, &
-                            Brieuc2016, Barca2018, Scheiber2018, Huang2011, Heaton_Burgess2007, &
+                            Brieuc2016, Barca2018, Scheiber2018, Huang2011, Heaton_Burgess2007, Chulhai2018, &
                             Schuett2018, Holmberg2018, Togo2018, Staub2019, Grimme2013, Grimme2016, &
                             Grimme2017, Kondov2007, Clabaut2020, Clabaut2021, &
                             Ren2011, Ren2013, Cohen2000, Rogers2002, Filippetti2000, &
@@ -4017,6 +4017,24 @@ CONTAINS
                          "AR 256401 ", &
                          "ER"), &
                          DOI="10.1103/PhysRevLett.98.256401")
+      
+      CALL add_reference(key=Chulhai2018, ISI_record=s2a( &
+                         "AU Chulhai, DV", &
+                         "   Goodpaster, JD", &
+                         "AF Chulhai, Dhabih V.", &
+                         "   Goodpaster, Jason D.", &
+                         "TI Projection-Based Correlated Wave Function in", &
+                         "   Density Functional Theory Embedding for Periodic Systems", &
+                         "SO JOURNAL OF CHEMICAL THEORY AND COMPUTATION", &
+                         "SN 1549-9618", &
+                         "PD MAR 1", & 
+                         "PY 2018", &
+                         "VL 14", &
+                         "BP 1928", &
+                         "EP 1942", &
+                         "DI 10.1021/acs.jctc.7b01154", &
+                         "ER"), &
+                         DOI="10.1021/acs.jctc.7b01154")
 
       CALL add_reference(key=Scheiber2018, ISI_record=s2a( &
                          "AU Scheiber, H", &

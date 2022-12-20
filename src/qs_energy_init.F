@@ -351,6 +351,10 @@ CONTAINS
       IF (dft_control%qs_control%dmfet_embedded) THEN
          dft_control%apply_dmfet_pot = .TRUE.
       END IF
+      ! Projection-based periodic embedding potential
+      IF (dft_control%qs_control%pbpe_embedded) THEN
+         dft_control%apply_pbpe_pot = .TRUE.
+      END IF
 
       CALL timestop(handle)
 
