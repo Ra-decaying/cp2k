@@ -2928,6 +2928,13 @@ CONTAINS
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 
+      CALL keyword_create(keyword, __LOCATION__, name="PBPE_EMBEDDED", &
+                          description="Calculation with projection-based periodic embedding potential. ", &
+                          usage="PBPE_EMBEDDED FALSE", &
+                          default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
       ! Integers
       CALL keyword_create(keyword, __LOCATION__, name="STO_NG", &
                           description="Order of Gaussian type expansion of Slater orbital basis sets.", &
@@ -3153,12 +3160,16 @@ CONTAINS
       CALL section_add_subsection(section, subsection)
       CALL section_release(subsection)
 
-      ! Embedding subsections: DFET and DMFET
+      ! Embedding subsections: DFET, DMFET and PBPE 
       CALL create_optimize_embed(subsection)
       CALL section_add_subsection(section, subsection)
       CALL section_release(subsection)
 
       CALL create_optimize_dmfet(subsection)
+      CALL section_add_subsection(section, subsection)
+      CALL section_release(subsection)
+
+      CALL create_optimize_pbpe(subsection)
       CALL section_add_subsection(section, subsection)
       CALL section_release(subsection)
 
@@ -5909,6 +5920,54 @@ CONTAINS
       CALL keyword_release(keyword)
 
    END SUBROUTINE create_optimize_dmfet
+
+! **************************************************************************************************
+!> \brief Input for projection-based periodic embedding, PBPE
+!> \param section ...
+!> \author Jianhao Li [12.2022]
+! **************************************************************************************************
+   SUBROUTINE create_optimize_pbpe(section)
+      TYPE(section_type), POINTER                        :: section
+
+      TYPE(keyword_type), POINTER                        :: keyword
+
+      CPASSERT(.NOT. ASSOCIATED(section))
+      CALL section_create(section, __LOCATION__, name="OPT_PBPE", &
+                          description="This section specifies optional parameters for PBPE potential optimization.", &
+                          n_keywords=4, n_subsections=0, repeats=.FALSE.)
+   
+      NULLIFY(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="N_ITER", &
+                          description="Maximum number of iterations "// &
+                          "in the optimization procedure.", &
+                          usage="N_ITER 75", default_i_val=100)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="ABS_LOC", &
+                          description="Whether absolute localization should be used.", &
+                          usage="ABS_LOC TRUE", default_l_val=.TRUE.)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="DM_CONV_MAX", &
+                          description="Convergence criterion for "// &
+                          "the maximum element of density matrix difference.", &
+                          usage="DM_CONV_MAX 1.0E-6", default_r_val=1.0E-4_dp)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="DM_CONV_RMSE", &
+                          description="Convergence criterion for " // &
+                          "the root-mean-square error of elements " // &
+                          "in the density matrix " // &
+                          "(the Frobenius norm of the density matrix difference).", &
+                          usage="DM_CONV_RMSE 1.0E-8", default_r_val=1.0E-6_dp)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+   END SUBROUTINE create_optimize_pbpe
 
 ! **************************************************************************************************
 !> \brief ...
