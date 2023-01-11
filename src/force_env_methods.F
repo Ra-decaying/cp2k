@@ -2161,41 +2161,41 @@ CONTAINS
                                                             HOMO_energy_A, HOMO_energy_B, &
                                                             norm_D_A_diff, norm_D_B_diff                
       REAL(KIND=dp), DIMENSION(:), POINTER               :: rhs
-      TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
-      TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_fm_type), POINTER                          :: fm_S_ref, fm_S_AB, &
-                                                            fm_KS_ref, fm_KS_AB, &
-                                                            fm_S_A, fm_S_B, &
-                                                            fm_ortho_A, fm_ortho_B, &
-                                                            fm_work1_A, fm_work1_B, &
-                                                            fm_work2_A, fm_work2_B, &
-                                                            fm_KS_AA, fm_KS_BB, &
-                                                            fm_D_A_interface, fm_D_B_interface, & 
-                                                            fm_D_A_old, fm_D_B_old, &
-                                                            fm_D_A_new, fm_D_B_new, &
-                                                            fm_D_A_diff, fm_D_B_diff, &
-                                                            fm_D_ref, fm_D_ref_old, &
-                                                            fm_P_A, fm_P_B, &
-                                                            fm_KS_A_in_B, fm_KS_B_in_A, &
-                                                            fm_occupied_MO_A, fm_occupied_MO_B, &
-                                                            fm_tmp_1, fm_tmp_2, fm_tmp_3, &
-                                                            fm_tmp_4, fm_tmp_5, fm_tmp_6, &
-                                                            fm_u_ghost, fm_test
+!      TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
+!      TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
+!      TYPE(cp_fm_type), POINTER                          :: fm_S_ref, fm_S_AB, &
+!                                                            fm_KS_ref, fm_KS_AB, &
+!                                                            fm_S_A, fm_S_B, &
+!                                                            fm_ortho_A, fm_ortho_B, &
+!                                                            fm_work1_A, fm_work1_B, &
+!                                                            fm_work2_A, fm_work2_B, &
+!                                                            fm_KS_AA, fm_KS_BB, &
+!                                                            fm_D_A_interface, fm_D_B_interface, & 
+!                                                            fm_D_A_old, fm_D_B_old, &
+!                                                            fm_D_A_new, fm_D_B_new, &
+!                                                            fm_D_A_diff, fm_D_B_diff, &
+!                                                            fm_D_ref, fm_D_ref_old, &
+!                                                            fm_P_A, fm_P_B, &
+!                                                            fm_KS_A_in_B, fm_KS_B_in_A, &
+!                                                            fm_occupied_MO_A, fm_occupied_MO_B, &
+!                                                            fm_tmp_1, fm_tmp_2, fm_tmp_3, &
+!                                                            fm_tmp_4, fm_tmp_5, fm_tmp_6, &
+!                                                            fm_u_ghost, fm_test
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(cp_para_env_type), POINTER                    :: para_env
-      TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: dbcsr_S_kp_ref, dbcsr_S_kp_AB, &
-                                                            dbcsr_KS_kp_ref, dbcsr_KS_kp_AB, &
-                                                            dbcsr_S_kp_A, dbcsr_S_kp_B, &
-                                                            dbcsr_D_kp_A, dbcsr_D_kp_B, dbcsr_D_kp_ref
+!      TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: dbcsr_S_kp_ref, dbcsr_S_kp_AB, &
+!                                                            dbcsr_KS_kp_ref, dbcsr_KS_kp_AB, &
+!                                                            dbcsr_S_kp_A, dbcsr_S_kp_B, &
+!                                                            dbcsr_D_kp_A, dbcsr_D_kp_B, dbcsr_D_kp_ref
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos, mo_set_A, mo_set_B, mo_set_ref
+!      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos, mo_set_A, mo_set_B, mo_set_ref
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       TYPE(qs_energy_type), POINTER                      :: energy
-      TYPE(qs_ks_env_type), POINTER                      :: ks_env_ref
+!      TYPE(qs_ks_env_type), POINTER                      :: ks_env_ref
       TYPE(qs_rho_type), POINTER                         :: rho, subsys_rho, &
                                                             rho_A, rho_B, rho_ref
-      TYPE(qs_scf_env_type), POINTER                     :: scf_env_A, scf_env_B, scf_env_ref
-      TYPE(scf_control_type), POINTER                    :: scf_control_A, scf_control_B, scf_control_ref
+!      TYPE(qs_scf_env_type), POINTER                     :: scf_env_A, scf_env_B, scf_env_ref
+!      TYPE(scf_control_type), POINTER                    :: scf_control_A, scf_control_B, scf_control_ref
       TYPE(section_vals_type), POINTER                   :: dft_section, input, opt_pbpe_section
 
       CALL timeset(routineN, handle)
@@ -2231,783 +2231,783 @@ CONTAINS
       ! Prepare for the potential optimization
       CALL prepare_pbpe_opt(force_env, opt_pbpe, opt_pbpe_section)
 
-      !CALL release_pbpe_opt(opt_pbpe)
+      CALL release_pbpe_opt(opt_pbpe)
 
       CPASSERT(.FALSE.)
 
-      WRITE (output_unit, '(A)') ""
-      ! Get MO sets
-      ! Subsystem A
-      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, mos=mos, &
-                      scf_control=scf_control_A, scf_env=scf_env_A)
-      CALL get_mo_set(mos(1)%mo_set, mu=HOMO_energy_A)
-      WRITE (output_unit, '(A, I0)') "nmo in subsystem A: ", nmos(2)
-      WRITE (output_unit, '(A, ES15.6)') "HOMO energy in subsystem A: ", HOMO_energy_A
-      ! Subsystem B
-      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, mos=mos, &
-                      scf_control=scf_control_B, scf_env=scf_env_B)
-      CALL get_mo_set(mos(1)%mo_set, mu=HOMO_energy_B)
-      WRITE (output_unit, '(A, I0)') "nmo in subsystem B: ", nmos(1)
-      WRITE (output_unit, '(A, ES15.6)') "HOMO energy in subsystem B: ", HOMO_energy_B
-      ! total system
-      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, mos=mos, &
-                      dft_control=dft_control, ks_env=ks_env_ref, &
-                      scf_control=scf_control_ref, scf_env=scf_env_ref)
-      CALL duplicate_mo_set(mo_set_ref(1)%mo_set, mos(1)%mo_set)
-
-      ! Get Fermi energy
-      IF (HOMO_energy_A .GT. HOMO_energy_B) THEN
-         fermi_energy = HOMO_energy_A
-      ELSE
-         fermi_energy = HOMO_energy_B
-      END IF
-      IF (fermi_energy .LT. 0.0_dp) THEN
-         fermi_energy = 0.0_dp
-      END IF
-      WRITE (output_unit, '(A, ES15.6)') "Current Fermi energy: ", fermi_energy
-
-      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, &
-                      blacs_env=blacs_env, para_env=para_env, &
-                      matrix_s_kp=dbcsr_S_kp_ref, matrix_ks_kp=dbcsr_KS_kp_ref, rho=rho_ref)
-      CALL qs_rho_get(rho_ref, rho_ao_kp=dbcsr_D_kp_ref)
-      ! Create fm_S_ref, fm_KS_ref, fm_D_ref and fm_D_ref_old
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(3), ncol_global=naos(3))
-      CALL cp_fm_create(fm_S_ref, fm_struct)
-      CALL cp_fm_create(fm_KS_ref, fm_struct)
-      CALL cp_fm_create(fm_D_ref, fm_struct)
-      CALL cp_fm_create(fm_D_ref_old, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      ! Get fm_S_ref and fm_KS_ref and fm_D_ref
-      CALL copy_dbcsr_to_fm(dbcsr_S_kp_ref(1, 1)%matrix, fm_S_ref)
-      CALL copy_dbcsr_to_fm(dbcsr_KS_kp_ref(1, 1)%matrix, fm_KS_ref)
-      CALL copy_dbcsr_to_fm(dbcsr_D_kp_ref(1, 1)%matrix, fm_D_ref)
-      CALL copy_dbcsr_to_fm(dbcsr_D_kp_ref(1, 1)%matrix, fm_D_ref_old)
-
-      IF (absolute_localization) THEN
-
-      ! Create fm_S_AB and fm_KS_AB
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(2), ncol_global=naos(1))
-      CALL cp_fm_create(fm_S_AB, fm_struct)
-      CALL cp_fm_create(fm_KS_AB, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      ! Get fm_S_AB
-      CALL cp_fm_to_fm_submat(fm_S_ref, fm_S_AB, naos(2), naos(1), &
-                              naos(1) + 1, 1, 1, 1)
-
-      ! Copy MO sets
-      ! Subsystem A
-      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, mos=mos)
-      CALL duplicate_mo_set(mo_set_A(1)%mo_set, mos(1)%mo_set)
-      ! Subsystem B
-      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, mos=mos)
-      CALL duplicate_mo_set(mo_set_B(1)%mo_set, mos(1)%mo_set)
-
-      ! Create fm_occupied_MO_A
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(2), ncol_global=nmos(2))
-      CALL cp_fm_create(fm_occupied_MO_A, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      ! Create fm_occupied_MO_B
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(1), ncol_global=nmos(1))
-      CALL cp_fm_create(fm_occupied_MO_B, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-
-      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, &
-                      matrix_s_kp=dbcsr_S_kp_A, rho=rho_A)
-      CALL qs_rho_get(rho_A, rho_ao_kp=dbcsr_D_kp_A)
-      ! Create fm_ortho_A, fm_work1_A, fm_work2_A, fm_S_A, fm_KS_AA, 
-      ! fm_D_A_old, fm_D_A_new, fm_D_A_diff, fm_KS_A_in_B and fm_P_B
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(2), ncol_global=naos(2))
-      CALL cp_fm_create(fm_ortho_A, fm_struct)
-      CALL cp_fm_create(fm_work1_A, fm_struct)
-      CALL cp_fm_create(fm_work2_A, fm_struct)
-      CALL cp_fm_create(fm_S_A, fm_struct)
-      CALL cp_fm_create(fm_KS_AA, fm_struct)
-      CALL cp_fm_create(fm_D_A_old, fm_struct)
-      CALL cp_fm_create(fm_D_A_new, fm_struct)
-      CALL cp_fm_create(fm_D_A_diff, fm_struct)
-      CALL cp_fm_create(fm_P_B, fm_struct)
-      CALL cp_fm_create(fm_KS_A_in_B, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      ! Get fm_S_A
-      CALL copy_dbcsr_to_fm(dbcsr_S_kp_A(1, 1)%matrix, fm_S_A)
-      ! Get fm_D_A_old
-      CALL copy_dbcsr_to_fm(dbcsr_D_kp_A(1, 1)%matrix, fm_D_A_old)
-
-      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, &
-                      matrix_s_kp=dbcsr_S_kp_B, rho=rho_B)
-      CALL qs_rho_get(rho_B, rho_ao_kp=dbcsr_D_kp_B)
-      ! Create fm_ortho_B, fm_work1_B, fm_work2_B, fm_S_B, fm_KS_BB, 
-      ! fm_D_B_old, fm_D_B_new, fm_D_B_diff, fm_KS_B_in_A and fm_P_A
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(1), ncol_global=naos(1))
-      CALL cp_fm_create(fm_ortho_B, fm_struct)
-      CALL cp_fm_create(fm_work1_B, fm_struct)
-      CALL cp_fm_create(fm_work2_B, fm_struct)
-      CALL cp_fm_create(fm_S_B, fm_struct)
-      CALL cp_fm_create(fm_KS_BB, fm_struct)
-      CALL cp_fm_create(fm_D_B_old, fm_struct)
-      CALL cp_fm_create(fm_D_B_new, fm_struct)
-      CALL cp_fm_create(fm_D_B_diff, fm_struct)
-      CALL cp_fm_create(fm_P_A, fm_struct)
-      CALL cp_fm_create(fm_KS_B_in_A, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      ! Get fm_S_B
-      CALL copy_dbcsr_to_fm(dbcsr_S_kp_B(1, 1)%matrix, fm_S_B)
-      ! Get fm_D_B_old
-      CALL copy_dbcsr_to_fm(dbcsr_D_kp_B(1, 1)%matrix, fm_D_B_old)
-
-      ! Get ready for diagonalization in subsystem A
-      n_dep_A = 0
-      CALL cp_fm_to_fm(fm_S_A, fm_ortho_A)
-      CALL cp_fm_power(fm_ortho_A, fm_work2_A, -0.5_dp, 1.0E-5_dp, n_dep_A)
-      ! Get ready for diagonalization in subsystem B
-      n_dep_B = 0
-      CALL cp_fm_to_fm(fm_S_B, fm_ortho_B)
-      CALL cp_fm_power(fm_ortho_B, fm_work2_B, -0.5_dp, 1.0E-5_dp, n_dep_B)
-
-      ! Create fm_tmp_1, fm_tmp_2 and fm_tmp_3
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(2), ncol_global=naos(1))
-      CALL cp_fm_create(fm_tmp_1, fm_struct)
-      CALL cp_fm_create(fm_tmp_2, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(2), ncol_global=naos(2))
-      CALL cp_fm_create(fm_tmp_3, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-
-      ! Create fm_tmp_4, fm_tmp_5 and fm_tmp_6
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(2), ncol_global=naos(1))
-      CALL cp_fm_create(fm_tmp_4, fm_struct)
-      CALL cp_fm_create(fm_tmp_5, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(1), ncol_global=naos(1))
-      CALL cp_fm_create(fm_tmp_6, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-
-
-      ! Test for it!
-
-      ! ************************************************************
-      ! Is diis_step in ref always .FALSE. ?
-      ! ************************************************************
-      ! mentioned in do_general_diag.F
-      WRITE (output_unit, '(A, E16.6)') "for_ref scf_env%sum_zeff_corr_for_ref=", scf_env_ref%sum_zeff_corr
-      WRITE (output_unit, '(A, I0)') "for_ref scf_env%mixing_method=", scf_env_ref%mixing_method
-      WRITE (output_unit, '(A, I0)') "for_ref scf_env%method=", scf_env_ref%method
-      WRITE (output_unit, '(A, L)') "for_ref scf_control%diagonalization%mom=", scf_control_ref%diagonalization%mom
-      WRITE (output_unit, '(A, L)') "for_ref scf_control%smear%do_smear=", scf_control_ref%smear%do_smear
-      WRITE (output_unit, '(A, L)') "for_ref scf_control%do_diag_sub=", scf_control_ref%do_diag_sub
-
-      WRITE (output_unit, '(A)') "" 
-      WRITE (output_unit, '(A)') ""
-
-      ! Set fm_D_ref as 0
-      CALL cp_fm_set_all(fm_D_ref, 0.0_dp, 0.0_dp)
-      ! Get fm_D_ref
-      CALL cp_fm_to_fm_submat(fm_D_A_old, fm_D_ref, naos(2), naos(2), &
-                              1, 1, naos(1) + 1, naos(1) + 1)
-      CALL cp_fm_to_fm_submat(fm_D_B_old, fm_D_ref, naos(1), naos(1), &
-                              1, 1, 1, 1)
-
-      lower_loop_with_absolute_localization: DO i_iter = 1, 100
-
-         WRITE (output_unit, '(A)') ""
-         WRITE (output_unit, '(A)') "WITH ABSOLUTE LOCALIZATION"
-         WRITE (output_unit, '(A, I0)') "iter ", i_iter
-
-         ! Copy fm_D_ref to dbcsr_D_kp_ref (rho_ao_kp for the reference system)
-         CALL copy_fm_to_dbcsr(fm_D_ref, dbcsr_D_kp_ref(1, 1)%matrix)
-         ! Print dbcsr_D_kp_ref
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         CALL cp_dbcsr_write_sparse_matrix(dbcsr_D_kp_ref(1, 1)%matrix, 4, 6, &
-                                           force_env%sub_force_env(3)%force_env%qs_env, para_env, &
-                                           output_unit=output_unit)
-         ! Update the density matrix of ref
-         CALL qs_scf_rho_update(rho_ref, force_env%sub_force_env(3)%force_env%qs_env, &
-                                scf_env_ref, ks_env_ref, .FALSE.) 
-         ! Update the Kohn-Sham matrix of ref
-         CALL qs_ks_update_qs_env(force_env%sub_force_env(3)%force_env%qs_env, &
-                                  just_energy=.FALSE., calculate_forces=.FALSE., print_active=.TRUE.)
-         ! Print dbcsr_KS_kp_ref
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         CALL cp_dbcsr_write_sparse_matrix(dbcsr_KS_kp_ref(1, 1)%matrix, 4, 6, &
-                                           force_env%sub_force_env(3)%force_env%qs_env, para_env, &
-                                           output_unit=output_unit)
-
-         ! Get fm_KS_ref
-         CALL copy_dbcsr_to_fm(dbcsr_KS_kp_ref(1, 1)%matrix, fm_KS_ref)
-         ! Get fm_KS_AB
-         CALL cp_fm_to_fm_submat(fm_KS_ref, fm_KS_AB, naos(2), naos(1), &
-                                 naos(1) + 1, 1, 1, 1)
-
-         !
-         ! Subsystem A
-         !
-
-         ! Get fm_KS_AA
-         CALL cp_fm_to_fm_submat(fm_KS_ref, fm_KS_AA, naos(2), naos(2), &
-                                 naos(1) + 1, naos(1) + 1, 1, 1)
-
-         ! Calculate fm_tmp_1 = fm_KS_AB - E_fermi * fm_S_AB
-         CALL cp_fm_to_fm(fm_S_AB, fm_tmp_1)
-         CALL cp_fm_geadd(1.0_dp, 'N', fm_KS_AB, -1.0_dp * fermi_energy, fm_tmp_1)
-         ! Calculate fm_tmp_2 = fm_tmp_1 * fm_D_B_old
-         CALL cp_fm_gemm('N', 'N', naos(2), naos(1), naos(1), 1.0_dp, &
-                         fm_tmp_1, fm_D_B_old, 0.0_dp, fm_tmp_2)
-         ! Calculate fm_tmp_3 = fm_tmp_2 * (fm_S_AB ^ T)
-         CALL cp_fm_gemm('N', 'T', naos(2), naos(2), naos(1), 1.0_dp, &
-                         fm_tmp_2, fm_S_AB, 0.0_dp, fm_tmp_3)
-         ! Calculate fm_P_B
-         ! fm_P_B = -0.5 * (fm_tmp_3 + fm_tmp_3 ^ T)
-         CALL cp_fm_to_fm(fm_tmp_3, fm_P_B)
-         CALL cp_fm_geadd(-0.5_dp, 'T', fm_tmp_3, -0.5_dp, fm_P_B)
-         ! Print fm_P_B
-         CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "P_B P_B"
-         CALL write_fm_with_basis_info(fm_P_B, 4, 6, force_env%sub_force_env(2)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-         ! Calculate fm_KS_A_in_B
-         CALL cp_fm_to_fm(fm_KS_AA, fm_KS_A_in_B)
-         CALL cp_fm_geadd(1.0_dp, 'N', fm_P_B, 1.0_dp, fm_KS_A_in_B)
-         ! Print fm_KS_A_in_B
-         CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "KS_A_in_B KS_A_in_B"
-         CALL write_fm_with_basis_info(fm_KS_A_in_B, 4, 6, force_env%sub_force_env(2)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         ! Diagonalize fm_KS_A_in_B
-         ! scf_env_do_scf in qs_scf.F
-         ! qs_scf_new_mos in qs_scf_loop_utils.F
-         ! START do_general_diag in qs_scf_diagonalization.F
-         ! START general_eigenproblem in qs_scf_diagonalization.F
-         CALL cp_fm_to_fm(fm_KS_A_in_B, fm_work1_A)
-         CALL eigensolver_symm(fm_work1_A, mo_set_A(1)%mo_set, fm_ortho_A, fm_work2_A, &
-                               .FALSE., 0.0_dp, fm_u_ghost, .FALSE., 0.0_dp)
-         ! END general_eigenproblem in qs_scf_diagonalization.F
-         ! Print MO coeffients of A in B
-         CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "MO_COEFF_A_in_B"
-         CALL write_fm_with_basis_info(mo_set_A(1)%mo_set%mo_coeff, 4, 6, &
-                                       force_env%sub_force_env(2)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         CALL set_mo_occupation(mo_array=mo_set_A, smear=scf_control_A%smear)
-         ! END do_general_diag in qs_scf_diagonalization.F
-         ! update energy needed?
-         ! END qs_scf_new_mos in qs_scf_loop_utils.F
-         ! skip density mixing (hopefully it is correct)
-
-         ! Calculate fm_D_A_new (CP2K stores only occupied orbital coefficients?)
-         CALL cp_fm_to_fm_submat(mo_set_A(1)%mo_set%mo_coeff, fm_occupied_MO_A, &
-                                 naos(2), nmos(2), 1, 1, 1, 1)
-         CALL cp_fm_gemm('N', 'T', naos(2), naos(2), nmos(2), 2.0_dp, &
-                         fm_occupied_MO_A, fm_occupied_MO_A, 0.0_dp, fm_D_A_new)
-         ! Print fm_D_A_new
-         CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "fm_D_A_new"
-         CALL write_fm_with_basis_info(fm_D_A_new, 4, 6, &
-                                       force_env%sub_force_env(2)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         ! Calculate fm_D_A_diff
-         CALL cp_fm_to_fm(fm_D_A_new, fm_D_A_diff)
-         CALL cp_fm_geadd(-1.0_dp, 'N', fm_D_A_old, 1.0_dp, fm_D_A_diff)
-         ! Print fm_D_A_diff
-         CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "fm_D_A_diff"
-         CALL write_fm_with_basis_info(fm_D_A_diff, 4, 6, &
-                                       force_env%sub_force_env(2)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         ! Calculate Frobenius norm of fm_D_A_diff
-         norm_D_A_diff = cp_fm_norm(fm_D_A_diff, 'F')
-
-         ! Copy_fm_D_A_new to fm_D_A_old
-         CALL cp_fm_to_fm(fm_D_A_new, fm_D_A_old)
-
-         !
-         ! Subsystem B
-         !
-
-         ! Get fm_KS_BB
-         CALL cp_fm_to_fm_submat(fm_KS_ref, fm_KS_BB, naos(1), naos(1), &
-                                 1, 1, 1, 1)
-         
-         ! Calculate fm_tmp_4 = fm_KS_AB - E_fermi * fm_S_AB
-         CALL cp_fm_to_fm(fm_S_AB, fm_tmp_4)
-         CALL cp_fm_geadd(1.0_dp, 'N', fm_KS_AB, -1.0_dp * fermi_energy, fm_tmp_4)
-         ! Calculate fm_tmp_5 = fm_D_A_old * fm_tmp_4
-         CALL cp_fm_gemm('N', 'N', naos(2), naos(1), naos(2), 1.0_dp, &
-                         fm_D_A_old, fm_tmp_4, 0.0_dp, fm_tmp_5)
-         ! Calculate fm_tmp_6 = (fm_S_AB ^ T) * fm_tmp_5
-         CALL cp_fm_gemm('T', 'N', naos(1), naos(1), naos(2), 1.0_dp, &
-                         fm_S_AB, fm_tmp_5, 0.0_dp, fm_tmp_6)
-         ! Calculate fm_P_A
-         ! fm_P_A = -0.5 * (fm_tmp_6 + fm_tmp_6 ^ T)
-         CALL cp_fm_to_fm(fm_tmp_6, fm_P_A)
-         CALL cp_fm_geadd(-0.5_dp, 'T', fm_tmp_6, -0.5_dp, fm_P_A)
-         ! Print fm_P_A
-         CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "P_A P_A"
-         CALL write_fm_with_basis_info(fm_P_A, 4, 6, force_env%sub_force_env(1)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-         ! Calculate fm_KS_B_in_A
-         CALL cp_fm_to_fm(fm_KS_BB, fm_KS_B_in_A)
-         CALL cp_fm_geadd(1.0_dp, 'N', fm_P_A, 1.0_dp, fm_KS_B_in_A)
-         ! Print fm_KS_B_in_A
-         CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "KS_B_in_A KS_B_in_A"
-         CALL write_fm_with_basis_info(fm_KS_B_in_A, 4, 6, force_env%sub_force_env(1)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-         
-         ! Diagonalize fm_KS_B_in_A
-         ! scf_env_do_scf in qs_scf.F
-         ! qs_scf_new_mos in qs_scf_loop_utils.F
-         ! START do_general_diag in qs_scf_diagonalization.F
-         ! START general_eigenproblem in qs_scf_diagonalization.F
-         CALL cp_fm_to_fm(fm_KS_B_in_A, fm_work1_B)
-         CALL eigensolver_symm(fm_work1_B, mo_set_B(1)%mo_set, fm_ortho_B, fm_work2_B, &
-                               .FALSE., 0.0_dp, fm_u_ghost, .FALSE., 0.0_dp)
-         ! END general_eigenproblem in qs_scf_diagonalization.F
-         ! Print MO coeffients of B in A
-         CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "MO_COEFF_B_in_A"
-         CALL write_fm_with_basis_info(mo_set_B(1)%mo_set%mo_coeff, 4, 6, &
-                                       force_env%sub_force_env(1)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         CALL set_mo_occupation(mo_array=mo_set_B, smear=scf_control_B%smear)
-         ! END do_general_diag in qs_scf_diagonalization.F
-         ! update energy needed?
-         ! END qs_scf_new_mos in qs_scf_loop_utils.F
-         ! skip density mixing (hopefully it is correct)
-
-         ! Calculate fm_D_B_new (CP2K stores only occupied orbital coefficients?)
-         CALL cp_fm_to_fm_submat(mo_set_B(1)%mo_set%mo_coeff, fm_occupied_MO_B, &
-                                 naos(1), nmos(1), 1, 1, 1, 1)
-         CALL cp_fm_gemm('N', 'T', naos(1), naos(1), nmos(1), 2.0_dp, &
-                         fm_occupied_MO_B, fm_occupied_MO_B, 0.0_dp, fm_D_B_new)
-         ! Print fm_D_B_new
-         CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "fm_D_B_new"
-         CALL write_fm_with_basis_info(fm_D_B_new, 4, 6, &
-                                       force_env%sub_force_env(1)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-         ! Calculate fm_D_B_diff
-         CALL cp_fm_to_fm(fm_D_B_new, fm_D_B_diff)
-         CALL cp_fm_geadd(-1.0_dp, 'N', fm_D_B_old, 1.0_dp, fm_D_B_diff)
-         ! Print fm_D_B_diff
-         CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "fm_D_B_diff"
-         CALL write_fm_with_basis_info(fm_D_B_diff, 4, 6, &
-                                       force_env%sub_force_env(1)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         ! Calculate Frobenius norm of fm_D_B_diff
-         norm_D_B_diff = cp_fm_norm(fm_D_B_diff, 'F')
-      
-         ! Copy_fm_D_B_new to fm_D_B_old
-         CALL cp_fm_to_fm(fm_D_B_new, fm_D_B_old)
-
-         ! Copy fm_D_A_old to fm_D_ref
-         CALL cp_fm_to_fm_submat(fm_D_A_old, fm_D_ref, naos(2), naos(2), &
-                                 1, 1, naos(1) + 1, naos(1) + 1)
-         ! Copy fm_D_B_old to fm_D_ref
-         CALL cp_fm_to_fm_submat(fm_D_B_old, fm_D_ref, naos(1), naos(1), &
-                                 1, 1, 1, 1)
-
-         WRITE (output_unit, '(A)') ""
-         WRITE (output_unit, '(A, ES15.6)') "norm_D_A_diff=", norm_D_A_diff 
-         WRITE (output_unit, '(A, ES15.6)') "norm_D_B_diff=", norm_D_B_diff
-
-
-         IF (norm_D_A_diff .LE. 1.0e-6_dp .AND. norm_D_B_diff .LE. 1.0e-6_dp) THEN
-            WRITE (output_unit, '(A, I0, A)') "Lower loop converges after ", i_iter, " iterations."
-            EXIT lower_loop_with_absolute_localization
-         END IF
-
-      END DO lower_loop_with_absolute_localization
-
-      ELSE
-
-      ! Copy MO sets
-      ! Subsystem A
-      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, mos=mos)
-      CALL duplicate_mo_set(mo_set_A(1)%mo_set, mos(1)%mo_set)
-      ! Subsystem B
-      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, mos=mos)
-      CALL duplicate_mo_set(mo_set_B(1)%mo_set, mos(1)%mo_set)
-
-      ! Create fm_occupied_MO_A
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(3), ncol_global=nmos(2))
-      CALL cp_fm_create(fm_occupied_MO_A, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      ! Create fm_occupied_MO_B
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(3), ncol_global=nmos(1))
-      CALL cp_fm_create(fm_occupied_MO_B, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-
-      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, &
-                      matrix_s_kp=dbcsr_S_kp_A, rho=rho_A)
-      CALL qs_rho_get(rho_A, rho_ao_kp=dbcsr_D_kp_A)
-      ! Create fm_D_A_interface
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(2), ncol_global=naos(2))
-      CALL cp_fm_create(fm_D_A_interface, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      ! Create fm_ortho_A, fm_work1_A, fm_work2_A, fm_S_A, fm_KS_AA, 
-      ! fm_D_A_old, fm_D_A_new, fm_D_A_diff, fm_KS_A_in_B and fm_P_B
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(3), ncol_global=naos(3))
-      CALL cp_fm_create(fm_ortho_A, fm_struct)
-      CALL cp_fm_create(fm_work1_A, fm_struct)
-      CALL cp_fm_create(fm_work2_A, fm_struct)
-      CALL cp_fm_create(fm_S_A, fm_struct)
-      CALL cp_fm_create(fm_KS_AA, fm_struct)
-      CALL cp_fm_create(fm_D_A_old, fm_struct)
-      CALL cp_fm_create(fm_D_A_new, fm_struct)
-      CALL cp_fm_create(fm_D_A_diff, fm_struct)
-      CALL cp_fm_create(fm_P_B, fm_struct)
-      CALL cp_fm_create(fm_KS_A_in_B, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      ! Get fm_S_A
-      CALL copy_dbcsr_to_fm(dbcsr_S_kp_ref(1, 1)%matrix, fm_S_A)
-      ! Get fm_D_A_old
-      CALL copy_dbcsr_to_fm(dbcsr_D_kp_A(1, 1)%matrix, fm_D_A_interface)
-      CALL cp_fm_set_all(fm_D_A_old, 0.0_dp, 0.0_dp)
-      CALL cp_fm_to_fm_submat(fm_D_A_interface, fm_D_A_old, naos(2), naos(2), &
-                              1, 1, naos(1) + 1, naos(1) + 1)
-
-      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, &
-                      matrix_s_kp=dbcsr_S_kp_B, rho=rho_B)
-      CALL qs_rho_get(rho_B, rho_ao_kp=dbcsr_D_kp_B)
-      ! Create fm_D_B_interface
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(1), ncol_global=naos(1))
-      CALL cp_fm_create(fm_D_B_interface, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      ! Create fm_ortho_B, fm_work1_B, fm_work2_B, fm_S_B, fm_KS_BB, 
-      ! fm_D_B_old, fm_D_B_new, fm_D_B_diff, fm_KS_B_in_A and fm_P_A
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(3), ncol_global=naos(3))
-      CALL cp_fm_create(fm_ortho_B, fm_struct)
-      CALL cp_fm_create(fm_work1_B, fm_struct)
-      CALL cp_fm_create(fm_work2_B, fm_struct)
-      CALL cp_fm_create(fm_S_B, fm_struct)
-      CALL cp_fm_create(fm_KS_BB, fm_struct)
-      CALL cp_fm_create(fm_D_B_old, fm_struct)
-      CALL cp_fm_create(fm_D_B_new, fm_struct)
-      CALL cp_fm_create(fm_D_B_diff, fm_struct)
-      CALL cp_fm_create(fm_P_A, fm_struct)
-      CALL cp_fm_create(fm_KS_B_in_A, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-      ! Get fm_S_B
-      CALL copy_dbcsr_to_fm(dbcsr_S_kp_ref(1, 1)%matrix, fm_S_B)
-      ! Get fm_D_B_old
-      CALL copy_dbcsr_to_fm(dbcsr_D_kp_B(1, 1)%matrix, fm_D_B_interface)
-      CALL cp_fm_set_all(fm_D_B_old, 0.0_dp, 0.0_dp)
-      CALL cp_fm_to_fm_submat(fm_D_B_interface, fm_D_B_old, naos(1), naos(1), &
-                              1, 1, 1, 1)
-
-      ! Get ready for diagonalization in subsystem A
-      n_dep_A = 0
-      CALL cp_fm_to_fm(fm_S_ref, fm_ortho_A)
-      CALL cp_fm_power(fm_ortho_A, fm_work2_A, -0.5_dp, 1.0E-5_dp, n_dep_A)
-      ! Get ready for diagonalization in subsystem B
-      n_dep_B = 0
-      CALL cp_fm_to_fm(fm_S_ref, fm_ortho_B)
-      CALL cp_fm_power(fm_ortho_B, fm_work2_B, -0.5_dp, 1.0E-5_dp, n_dep_B)
-
-      ! Create fm_tmp_1, fm_tmp_2 and fm_tmp_3
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(3), ncol_global=naos(3))
-      CALL cp_fm_create(fm_tmp_1, fm_struct)
-      CALL cp_fm_create(fm_tmp_2, fm_struct)
-      CALL cp_fm_create(fm_tmp_3, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-
-      ! Create fm_tmp_4, fm_tmp_5 and fm_tmp_6
-      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
-                               nrow_global=naos(3), ncol_global=naos(3))
-      CALL cp_fm_create(fm_tmp_4, fm_struct)
-      CALL cp_fm_create(fm_tmp_5, fm_struct)
-      CALL cp_fm_create(fm_tmp_6, fm_struct)
-      CALL cp_fm_struct_release(fm_struct)
-
-      ! Test for it!
-
-      ! ************************************************************
-      ! Is diis_step in ref always .FALSE. ?
-      ! ************************************************************
-      ! mentioned in do_general_diag.F
-      WRITE (output_unit, '(A, E16.6)') "for_ref scf_env%sum_zeff_corr_for_ref=", scf_env_ref%sum_zeff_corr
-      WRITE (output_unit, '(A, I0)') "for_ref scf_env%mixing_method=", scf_env_ref%mixing_method
-      WRITE (output_unit, '(A, I0)') "for_ref scf_env%method=", scf_env_ref%method
-      WRITE (output_unit, '(A, L)') "for_ref scf_control%diagonalization%mom=", scf_control_ref%diagonalization%mom
-      WRITE (output_unit, '(A, L)') "for_ref scf_control%smear%do_smear=", scf_control_ref%smear%do_smear
-      WRITE (output_unit, '(A, L)') "for_ref scf_control%do_diag_sub=", scf_control_ref%do_diag_sub
-
-      WRITE (output_unit, '(A)') "" 
-      WRITE (output_unit, '(A)') ""
-
-      ! Set fm_D_ref as 0
-      CALL cp_fm_set_all(fm_D_ref, 0.0_dp, 0.0_dp)
-      ! Get fm_D_ref
-      CALL cp_fm_to_fm_submat(fm_D_A_old, fm_D_ref, naos(2), naos(2), &
-                              naos(1) + 1, naos(1) + 1, naos(1) + 1, naos(1) + 1)
-      CALL cp_fm_to_fm_submat(fm_D_B_old, fm_D_ref, naos(1), naos(1), &
-                              1, 1, 1, 1)
-
-      lower_loop_without_absolute_localization: DO i_iter = 1, 100
-
-         WRITE (output_unit, '(A)') ""
-         WRITE (output_unit, '(A)') "WITHOUT ABSOLUTE LOCALIZATION"
-         WRITE (output_unit, '(A, I0)') "iter ", i_iter
-
-         ! Copy fm_D_ref to dbcsr_D_kp_ref (rho_ao_kp for the reference system)
-         CALL copy_fm_to_dbcsr(fm_D_ref, dbcsr_D_kp_ref(1, 1)%matrix)
-         ! Print dbcsr_D_kp_ref
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         CALL cp_dbcsr_write_sparse_matrix(dbcsr_D_kp_ref(1, 1)%matrix, 4, 6, &
-                                           force_env%sub_force_env(3)%force_env%qs_env, para_env, &
-                                           output_unit=output_unit)
-         ! Update the density matrix of ref
-         CALL qs_scf_rho_update(rho_ref, force_env%sub_force_env(3)%force_env%qs_env, &
-                                scf_env_ref, ks_env_ref, .FALSE.) 
-         ! Update the Kohn-Sham matrix of ref
-         CALL qs_ks_update_qs_env(force_env%sub_force_env(3)%force_env%qs_env, &
-                                  just_energy=.FALSE., calculate_forces=.FALSE., print_active=.TRUE.)
-         ! Print dbcsr_KS_kp_ref
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         CALL cp_dbcsr_write_sparse_matrix(dbcsr_KS_kp_ref(1, 1)%matrix, 4, 6, &
-                                           force_env%sub_force_env(3)%force_env%qs_env, para_env, &
-                                           output_unit=output_unit)
-         ! Get fm_KS_ref
-         CALL copy_dbcsr_to_fm(dbcsr_KS_kp_ref(1, 1)%matrix, fm_KS_ref)
-
-         !
-         ! Subsystem A
-         !
-
-         ! Get fm_KS_AA
-         CALL cp_fm_to_fm(fm_KS_ref, fm_KS_AA)
-
-         ! Calculate fm_tmp_1 = fm_KS_AA - E_fermi * fm_S_ref
-         CALL cp_fm_to_fm(fm_S_ref, fm_tmp_1)
-         CALL cp_fm_geadd(1.0_dp, 'N', fm_KS_AA, -1.0_dp * fermi_energy, fm_tmp_1)
-         ! Calculate fm_tmp_2 = fm_tmp_1 * fm_D_B_old
-         CALL cp_fm_gemm('N', 'N', naos(3), naos(3), naos(3), 1.0_dp, &
-                         fm_tmp_1, fm_D_B_old, 0.0_dp, fm_tmp_2)
-         ! Calculate fm_tmp_3 = fm_tmp_2 * (fm_S_ref ^ T)
-         CALL cp_fm_gemm('N', 'T', naos(3), naos(3), naos(3), 1.0_dp, &
-                         fm_tmp_2, fm_S_ref, 0.0_dp, fm_tmp_3)
-         ! Calculate fm_P_B
-         ! fm_P_B = -0.5 * (fm_tmp_3 + fm_tmp_3 ^ T)
-         CALL cp_fm_to_fm(fm_tmp_3, fm_P_B)
-         CALL cp_fm_geadd(-0.5_dp, 'T', fm_tmp_3, -0.5_dp, fm_P_B)
-         ! Print fm_P_B
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "P_B P_B"
-         CALL write_fm_with_basis_info(fm_P_B, 4, 6, force_env%sub_force_env(3)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-         ! Calculate fm_KS_A_in_B
-         CALL cp_fm_to_fm(fm_KS_AA, fm_KS_A_in_B)
-         CALL cp_fm_geadd(1.0_dp, 'N', fm_P_B, 1.0_dp, fm_KS_A_in_B)
-         ! Print fm_KS_A_in_B
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "KS_A_in_B KS_A_in_B"
-         CALL write_fm_with_basis_info(fm_KS_A_in_B, 4, 6, force_env%sub_force_env(3)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         ! Diagonalize fm_KS_A_in_B
-         ! scf_env_do_scf in qs_scf.F
-         ! qs_scf_new_mos in qs_scf_loop_utils.F
-         ! START do_general_diag in qs_scf_diagonalization.F
-         ! START general_eigenproblem in qs_scf_diagonalization.F
-         CALL cp_fm_to_fm(fm_KS_A_in_B, fm_work1_A)
-         CALL eigensolver_symm(fm_work1_A, mo_set_A(1)%mo_set, fm_ortho_A, fm_work2_A, &
-                               .FALSE., 0.0_dp, fm_u_ghost, .FALSE., 0.0_dp)
-         ! END general_eigenproblem in qs_scf_diagonalization.F
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "MO_COEFF_A_in_B"
-         CALL write_fm_with_basis_info(mo_set_A(1)%mo_set%mo_coeff, 4, 6, &
-                                       force_env%sub_force_env(3)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         CALL set_mo_occupation(mo_array=mo_set_A, smear=scf_control_ref%smear)
-         ! END do_general_diag in qs_scf_diagonalization.F
-         ! update energy needed?
-         ! END qs_scf_new_mos in qs_scf_loop_utils.F
-         ! skip density mixing (hopefully it is correct)
-
-         ! Calculate fm_D_A_new (CP2K stores only occupied orbital coefficients?)
-         CALL cp_fm_to_fm_submat(mo_set_A(1)%mo_set%mo_coeff, fm_occupied_MO_A, &
-                                 naos(3), nmos(2), 1, 1, 1, 1)
-         CALL cp_fm_gemm('N', 'T', naos(3), naos(3), nmos(2), 2.0_dp, &
-                         fm_occupied_MO_A, fm_occupied_MO_A, 0.0_dp, fm_D_A_new)
-         ! Print fm_D_A_new
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "fm_D_A_new"
-         CALL write_fm_with_basis_info(fm_D_A_new, 4, 6, &
-                                       force_env%sub_force_env(3)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         ! Calculate fm_D_A_diff
-         CALL cp_fm_to_fm(fm_D_A_new, fm_D_A_diff)
-         CALL cp_fm_geadd(-1.0_dp, 'N', fm_D_A_old, 1.0_dp, fm_D_A_diff)
-         ! Print fm_D_A_diff
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "fm_D_A_diff"
-         CALL write_fm_with_basis_info(fm_D_A_diff, 4, 6, &
-                                       force_env%sub_force_env(3)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         ! Calculate Frobenius norm of fm_D_A_diff
-         norm_D_A_diff = cp_fm_norm(fm_D_A_diff, 'F')
-
-         ! Copy_fm_D_A_new to fm_D_A_old
-         CALL cp_fm_to_fm(fm_D_A_new, fm_D_A_old)
-
-         !
-         ! Subsystem B
-         !
-
-         ! Get fm_KS_BB
-         CALL cp_fm_to_fm(fm_KS_ref, fm_KS_BB)
-
-         ! Calculate fm_tmp_4 = fm_KS_BB - E_fermi * fm_S_ref
-         CALL cp_fm_to_fm(fm_S_ref, fm_tmp_4)
-         CALL cp_fm_geadd(1.0_dp, 'N', fm_KS_BB, -1.0_dp * fermi_energy, fm_tmp_4)
-         ! Calculate fm_tmp_5 = fm_D_A_old * fm_tmp_4
-         CALL cp_fm_gemm('N', 'N', naos(3), naos(3), naos(3), 1.0_dp, &
-                         fm_D_A_old, fm_tmp_4, 0.0_dp, fm_tmp_5)
-         ! Calculate fm_tmp_6 = (fm_S_ref ^ T) * fm_tmp_5
-         CALL cp_fm_gemm('T', 'N', naos(3), naos(3), naos(3), 1.0_dp, &
-                         fm_S_ref, fm_tmp_5, 0.0_dp, fm_tmp_6)
-         ! Calculate fm_P_A
-         ! fm_P_A = -0.5 * (fm_tmp_6 + fm_tmp_6 ^ T)
-         CALL cp_fm_to_fm(fm_tmp_6, fm_P_A)
-         CALL cp_fm_geadd(-0.5_dp, 'T', fm_tmp_6, -0.5_dp, fm_P_A)
-         ! Print fm_P_A
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "P_A P_A"
-         CALL write_fm_with_basis_info(fm_P_A, 4, 6, force_env%sub_force_env(3)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-         ! Calculate fm_KS_B_in_A
-         CALL cp_fm_to_fm(fm_KS_BB, fm_KS_B_in_A)
-         CALL cp_fm_geadd(1.0_dp, 'N', fm_P_A, 1.0_dp, fm_KS_B_in_A)
-         ! Print fm_KS_B_in_A
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "KS_B_in_A KS_B_in_A"
-         CALL write_fm_with_basis_info(fm_KS_B_in_A, 4, 6, force_env%sub_force_env(3)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         ! Diagonalize fm_KS_B_in_A
-         ! scf_env_do_scf in qs_scf.F
-         ! qs_scf_new_mos in qs_scf_loop_utils.F
-         ! START do_general_diag in qs_scf_diagonalization.F
-         ! START general_eigenproblem in qs_scf_diagonalization.F
-         CALL cp_fm_to_fm(fm_KS_B_in_A, fm_work1_B)
-         CALL eigensolver_symm(fm_work1_B, mo_set_B(1)%mo_set, fm_ortho_B, fm_work2_B, &
-                               .FALSE., 0.0_dp, fm_u_ghost, .FALSE., 0.0_dp)
-         ! END general_eigenproblem in qs_scf_diagonalization.F
-         ! Print MO coeffients of B in A
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "MO_COEFF_B_in_A"
-         CALL write_fm_with_basis_info(mo_set_B(1)%mo_set%mo_coeff, 4, 6, &
-                                       force_env%sub_force_env(3)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         CALL set_mo_occupation(mo_array=mo_set_B, smear=scf_control_B%smear)
-         ! END do_general_diag in qs_scf_diagonalization.F
-         ! update energy needed?
-         ! END qs_scf_new_mos in qs_scf_loop_utils.F
-         ! skip density mixing (hopefully it is correct)
-
-         ! Calculate fm_D_B_new (CP2K stores only occupied orbital coefficients?)
-         CALL cp_fm_to_fm_submat(mo_set_B(1)%mo_set%mo_coeff, fm_occupied_MO_B, &
-                                 naos(3), nmos(1), 1, 1, 1, 1)
-         CALL cp_fm_gemm('N', 'T', naos(3), naos(3), nmos(1), 2.0_dp, &
-                         fm_occupied_MO_B, fm_occupied_MO_B, 0.0_dp, fm_D_B_new)
-         ! Print fm_D_B_new
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "fm_D_B_new"
-         CALL write_fm_with_basis_info(fm_D_B_new, 4, 6, &
-                                       force_env%sub_force_env(3)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         ! Calculate fm_D_B_diff
-         CALL cp_fm_to_fm(fm_D_B_new, fm_D_B_diff)
-         CALL cp_fm_geadd(-1.0_dp, 'N', fm_D_B_old, 1.0_dp, fm_D_B_diff)
-         ! Print fm_D_B_diff
-         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-         WRITE (output_unit, '(A)') "fm_D_B_diff"
-         CALL write_fm_with_basis_info(fm_D_B_diff, 4, 6, &
-                                       force_env%sub_force_env(3)%force_env%qs_env, &
-                                       para_env, output_unit=output_unit)
-
-         ! Calculate Frobenius norm of fm_D_B_diff
-         norm_D_B_diff = cp_fm_norm(fm_D_B_diff, 'F')
-
-         ! Copy_fm_D_B_new to fm_D_B_old
-         CALL cp_fm_to_fm(fm_D_B_new, fm_D_B_old)
-
-         ! Calculate fm_D_ref
-         CALL cp_fm_to_fm(fm_D_A_old, fm_D_ref)
-         CALL cp_fm_geadd(1.0_dp, 'N', fm_D_B_old, 1.0_dp, fm_D_ref)
-
-         WRITE (output_unit, '(A)') ""
-         WRITE (output_unit, '(A, ES15.6)') "norm_D_A_diff=", norm_D_A_diff 
-         WRITE (output_unit, '(A, ES15.6)') "norm_D_B_diff=", norm_D_B_diff
-
-         IF (norm_D_A_diff .LE. 1.0e-6_dp .AND. norm_D_B_diff .LE. 1.0e-6_dp) THEN
-            WRITE (output_unit, '(A, I0, A)') "Lower loop converges after ", i_iter, " iterations."
-            EXIT lower_loop_without_absolute_localization
-         END IF
-
-
-      END DO lower_loop_without_absolute_localization
-
-      END IF
-
-      ! Calculate energy
-      CALL qs_scf_print_summary(output_unit, force_env%sub_force_env(3)%force_env%qs_env)
-
-      ! Check the method to calculate energy
-      ! Copy fm_D_ref_old to dbcsr_D_kp_ref (rho_ao_kp for the reference system)
-      CALL copy_fm_to_dbcsr(fm_D_ref_old, dbcsr_D_kp_ref(1, 1)%matrix)
-      ! Print dbcsr_D_kp_ref
-      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
-      CALL cp_dbcsr_write_sparse_matrix(dbcsr_D_kp_ref(1, 1)%matrix, 4, 6, &
-                                          force_env%sub_force_env(3)%force_env%qs_env, para_env, &
-                                          output_unit=output_unit)
-      ! Update the density matrix of ref
-      CALL qs_scf_rho_update(rho_ref, force_env%sub_force_env(3)%force_env%qs_env, &
-                             scf_env_ref, ks_env_ref, .FALSE.) 
-      ! Update the Kohn-Sham matrix of ref
-      CALL qs_ks_update_qs_env(force_env%sub_force_env(3)%force_env%qs_env, &
-                               just_energy=.FALSE., calculate_forces=.FALSE., print_active=.TRUE.)
-      CALL qs_scf_print_summary(output_unit, force_env%sub_force_env(3)%force_env%qs_env)
+!      WRITE (output_unit, '(A)') ""
+!      ! Get MO sets
+!      ! Subsystem A
+!      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, mos=mos, &
+!                      scf_control=scf_control_A, scf_env=scf_env_A)
+!      CALL get_mo_set(mos(1)%mo_set, mu=HOMO_energy_A)
+!      WRITE (output_unit, '(A, I0)') "nmo in subsystem A: ", nmos(2)
+!      WRITE (output_unit, '(A, ES15.6)') "HOMO energy in subsystem A: ", HOMO_energy_A
+!      ! Subsystem B
+!      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, mos=mos, &
+!                      scf_control=scf_control_B, scf_env=scf_env_B)
+!      CALL get_mo_set(mos(1)%mo_set, mu=HOMO_energy_B)
+!      WRITE (output_unit, '(A, I0)') "nmo in subsystem B: ", nmos(1)
+!      WRITE (output_unit, '(A, ES15.6)') "HOMO energy in subsystem B: ", HOMO_energy_B
+!      ! total system
+!      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, mos=mos, &
+!                      dft_control=dft_control, ks_env=ks_env_ref, &
+!                      scf_control=scf_control_ref, scf_env=scf_env_ref)
+!      CALL duplicate_mo_set(mo_set_ref(1)%mo_set, mos(1)%mo_set)
+!
+!      ! Get Fermi energy
+!      IF (HOMO_energy_A .GT. HOMO_energy_B) THEN
+!         fermi_energy = HOMO_energy_A
+!      ELSE
+!         fermi_energy = HOMO_energy_B
+!      END IF
+!      IF (fermi_energy .LT. 0.0_dp) THEN
+!         fermi_energy = 0.0_dp
+!      END IF
+!      WRITE (output_unit, '(A, ES15.6)') "Current Fermi energy: ", fermi_energy
+!
+!      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, &
+!                      blacs_env=blacs_env, para_env=para_env, &
+!                      matrix_s_kp=dbcsr_S_kp_ref, matrix_ks_kp=dbcsr_KS_kp_ref, rho=rho_ref)
+!      CALL qs_rho_get(rho_ref, rho_ao_kp=dbcsr_D_kp_ref)
+!      ! Create fm_S_ref, fm_KS_ref, fm_D_ref and fm_D_ref_old
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(3), ncol_global=naos(3))
+!      CALL cp_fm_create(fm_S_ref, fm_struct)
+!      CALL cp_fm_create(fm_KS_ref, fm_struct)
+!      CALL cp_fm_create(fm_D_ref, fm_struct)
+!      CALL cp_fm_create(fm_D_ref_old, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      ! Get fm_S_ref and fm_KS_ref and fm_D_ref
+!      CALL copy_dbcsr_to_fm(dbcsr_S_kp_ref(1, 1)%matrix, fm_S_ref)
+!      CALL copy_dbcsr_to_fm(dbcsr_KS_kp_ref(1, 1)%matrix, fm_KS_ref)
+!      CALL copy_dbcsr_to_fm(dbcsr_D_kp_ref(1, 1)%matrix, fm_D_ref)
+!      CALL copy_dbcsr_to_fm(dbcsr_D_kp_ref(1, 1)%matrix, fm_D_ref_old)
+!
+!      IF (absolute_localization) THEN
+!
+!      ! Create fm_S_AB and fm_KS_AB
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(2), ncol_global=naos(1))
+!      CALL cp_fm_create(fm_S_AB, fm_struct)
+!      CALL cp_fm_create(fm_KS_AB, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      ! Get fm_S_AB
+!      CALL cp_fm_to_fm_submat(fm_S_ref, fm_S_AB, naos(2), naos(1), &
+!                              naos(1) + 1, 1, 1, 1)
+!
+!      ! Copy MO sets
+!      ! Subsystem A
+!      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, mos=mos)
+!      CALL duplicate_mo_set(mo_set_A(1)%mo_set, mos(1)%mo_set)
+!      ! Subsystem B
+!      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, mos=mos)
+!      CALL duplicate_mo_set(mo_set_B(1)%mo_set, mos(1)%mo_set)
+!
+!      ! Create fm_occupied_MO_A
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(2), ncol_global=nmos(2))
+!      CALL cp_fm_create(fm_occupied_MO_A, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      ! Create fm_occupied_MO_B
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(1), ncol_global=nmos(1))
+!      CALL cp_fm_create(fm_occupied_MO_B, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!
+!      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, &
+!                      matrix_s_kp=dbcsr_S_kp_A, rho=rho_A)
+!      CALL qs_rho_get(rho_A, rho_ao_kp=dbcsr_D_kp_A)
+!      ! Create fm_ortho_A, fm_work1_A, fm_work2_A, fm_S_A, fm_KS_AA, 
+!      ! fm_D_A_old, fm_D_A_new, fm_D_A_diff, fm_KS_A_in_B and fm_P_B
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(2), ncol_global=naos(2))
+!      CALL cp_fm_create(fm_ortho_A, fm_struct)
+!      CALL cp_fm_create(fm_work1_A, fm_struct)
+!      CALL cp_fm_create(fm_work2_A, fm_struct)
+!      CALL cp_fm_create(fm_S_A, fm_struct)
+!      CALL cp_fm_create(fm_KS_AA, fm_struct)
+!      CALL cp_fm_create(fm_D_A_old, fm_struct)
+!      CALL cp_fm_create(fm_D_A_new, fm_struct)
+!      CALL cp_fm_create(fm_D_A_diff, fm_struct)
+!      CALL cp_fm_create(fm_P_B, fm_struct)
+!      CALL cp_fm_create(fm_KS_A_in_B, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      ! Get fm_S_A
+!      CALL copy_dbcsr_to_fm(dbcsr_S_kp_A(1, 1)%matrix, fm_S_A)
+!      ! Get fm_D_A_old
+!      CALL copy_dbcsr_to_fm(dbcsr_D_kp_A(1, 1)%matrix, fm_D_A_old)
+!
+!      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, &
+!                      matrix_s_kp=dbcsr_S_kp_B, rho=rho_B)
+!      CALL qs_rho_get(rho_B, rho_ao_kp=dbcsr_D_kp_B)
+!      ! Create fm_ortho_B, fm_work1_B, fm_work2_B, fm_S_B, fm_KS_BB, 
+!      ! fm_D_B_old, fm_D_B_new, fm_D_B_diff, fm_KS_B_in_A and fm_P_A
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(1), ncol_global=naos(1))
+!      CALL cp_fm_create(fm_ortho_B, fm_struct)
+!      CALL cp_fm_create(fm_work1_B, fm_struct)
+!      CALL cp_fm_create(fm_work2_B, fm_struct)
+!      CALL cp_fm_create(fm_S_B, fm_struct)
+!      CALL cp_fm_create(fm_KS_BB, fm_struct)
+!      CALL cp_fm_create(fm_D_B_old, fm_struct)
+!      CALL cp_fm_create(fm_D_B_new, fm_struct)
+!      CALL cp_fm_create(fm_D_B_diff, fm_struct)
+!      CALL cp_fm_create(fm_P_A, fm_struct)
+!      CALL cp_fm_create(fm_KS_B_in_A, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      ! Get fm_S_B
+!      CALL copy_dbcsr_to_fm(dbcsr_S_kp_B(1, 1)%matrix, fm_S_B)
+!      ! Get fm_D_B_old
+!      CALL copy_dbcsr_to_fm(dbcsr_D_kp_B(1, 1)%matrix, fm_D_B_old)
+!
+!      ! Get ready for diagonalization in subsystem A
+!      n_dep_A = 0
+!      CALL cp_fm_to_fm(fm_S_A, fm_ortho_A)
+!      CALL cp_fm_power(fm_ortho_A, fm_work2_A, -0.5_dp, 1.0E-5_dp, n_dep_A)
+!      ! Get ready for diagonalization in subsystem B
+!      n_dep_B = 0
+!      CALL cp_fm_to_fm(fm_S_B, fm_ortho_B)
+!      CALL cp_fm_power(fm_ortho_B, fm_work2_B, -0.5_dp, 1.0E-5_dp, n_dep_B)
+!
+!      ! Create fm_tmp_1, fm_tmp_2 and fm_tmp_3
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(2), ncol_global=naos(1))
+!      CALL cp_fm_create(fm_tmp_1, fm_struct)
+!      CALL cp_fm_create(fm_tmp_2, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(2), ncol_global=naos(2))
+!      CALL cp_fm_create(fm_tmp_3, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!
+!      ! Create fm_tmp_4, fm_tmp_5 and fm_tmp_6
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(2), ncol_global=naos(1))
+!      CALL cp_fm_create(fm_tmp_4, fm_struct)
+!      CALL cp_fm_create(fm_tmp_5, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(1), ncol_global=naos(1))
+!      CALL cp_fm_create(fm_tmp_6, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!
+!
+!      ! Test for it!
+!
+!      ! ************************************************************
+!      ! Is diis_step in ref always .FALSE. ?
+!      ! ************************************************************
+!      ! mentioned in do_general_diag.F
+!      WRITE (output_unit, '(A, E16.6)') "for_ref scf_env%sum_zeff_corr_for_ref=", scf_env_ref%sum_zeff_corr
+!      WRITE (output_unit, '(A, I0)') "for_ref scf_env%mixing_method=", scf_env_ref%mixing_method
+!      WRITE (output_unit, '(A, I0)') "for_ref scf_env%method=", scf_env_ref%method
+!      WRITE (output_unit, '(A, L)') "for_ref scf_control%diagonalization%mom=", scf_control_ref%diagonalization%mom
+!      WRITE (output_unit, '(A, L)') "for_ref scf_control%smear%do_smear=", scf_control_ref%smear%do_smear
+!      WRITE (output_unit, '(A, L)') "for_ref scf_control%do_diag_sub=", scf_control_ref%do_diag_sub
+!
+!      WRITE (output_unit, '(A)') "" 
+!      WRITE (output_unit, '(A)') ""
+!
+!      ! Set fm_D_ref as 0
+!      CALL cp_fm_set_all(fm_D_ref, 0.0_dp, 0.0_dp)
+!      ! Get fm_D_ref
+!      CALL cp_fm_to_fm_submat(fm_D_A_old, fm_D_ref, naos(2), naos(2), &
+!                              1, 1, naos(1) + 1, naos(1) + 1)
+!      CALL cp_fm_to_fm_submat(fm_D_B_old, fm_D_ref, naos(1), naos(1), &
+!                              1, 1, 1, 1)
+!
+!      lower_loop_with_absolute_localization: DO i_iter = 1, 100
+!
+!         WRITE (output_unit, '(A)') ""
+!         WRITE (output_unit, '(A)') "WITH ABSOLUTE LOCALIZATION"
+!         WRITE (output_unit, '(A, I0)') "iter ", i_iter
+!
+!         ! Copy fm_D_ref to dbcsr_D_kp_ref (rho_ao_kp for the reference system)
+!         CALL copy_fm_to_dbcsr(fm_D_ref, dbcsr_D_kp_ref(1, 1)%matrix)
+!         ! Print dbcsr_D_kp_ref
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         CALL cp_dbcsr_write_sparse_matrix(dbcsr_D_kp_ref(1, 1)%matrix, 4, 6, &
+!                                           force_env%sub_force_env(3)%force_env%qs_env, para_env, &
+!                                           output_unit=output_unit)
+!         ! Update the density matrix of ref
+!         CALL qs_scf_rho_update(rho_ref, force_env%sub_force_env(3)%force_env%qs_env, &
+!                                scf_env_ref, ks_env_ref, .FALSE.) 
+!         ! Update the Kohn-Sham matrix of ref
+!         CALL qs_ks_update_qs_env(force_env%sub_force_env(3)%force_env%qs_env, &
+!                                  just_energy=.FALSE., calculate_forces=.FALSE., print_active=.TRUE.)
+!         ! Print dbcsr_KS_kp_ref
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         CALL cp_dbcsr_write_sparse_matrix(dbcsr_KS_kp_ref(1, 1)%matrix, 4, 6, &
+!                                           force_env%sub_force_env(3)%force_env%qs_env, para_env, &
+!                                           output_unit=output_unit)
+!
+!         ! Get fm_KS_ref
+!         CALL copy_dbcsr_to_fm(dbcsr_KS_kp_ref(1, 1)%matrix, fm_KS_ref)
+!         ! Get fm_KS_AB
+!         CALL cp_fm_to_fm_submat(fm_KS_ref, fm_KS_AB, naos(2), naos(1), &
+!                                 naos(1) + 1, 1, 1, 1)
+!
+!         !
+!         ! Subsystem A
+!         !
+!
+!         ! Get fm_KS_AA
+!         CALL cp_fm_to_fm_submat(fm_KS_ref, fm_KS_AA, naos(2), naos(2), &
+!                                 naos(1) + 1, naos(1) + 1, 1, 1)
+!
+!         ! Calculate fm_tmp_1 = fm_KS_AB - E_fermi * fm_S_AB
+!         CALL cp_fm_to_fm(fm_S_AB, fm_tmp_1)
+!         CALL cp_fm_geadd(1.0_dp, 'N', fm_KS_AB, -1.0_dp * fermi_energy, fm_tmp_1)
+!         ! Calculate fm_tmp_2 = fm_tmp_1 * fm_D_B_old
+!         CALL cp_fm_gemm('N', 'N', naos(2), naos(1), naos(1), 1.0_dp, &
+!                         fm_tmp_1, fm_D_B_old, 0.0_dp, fm_tmp_2)
+!         ! Calculate fm_tmp_3 = fm_tmp_2 * (fm_S_AB ^ T)
+!         CALL cp_fm_gemm('N', 'T', naos(2), naos(2), naos(1), 1.0_dp, &
+!                         fm_tmp_2, fm_S_AB, 0.0_dp, fm_tmp_3)
+!         ! Calculate fm_P_B
+!         ! fm_P_B = -0.5 * (fm_tmp_3 + fm_tmp_3 ^ T)
+!         CALL cp_fm_to_fm(fm_tmp_3, fm_P_B)
+!         CALL cp_fm_geadd(-0.5_dp, 'T', fm_tmp_3, -0.5_dp, fm_P_B)
+!         ! Print fm_P_B
+!         CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "P_B P_B"
+!         CALL write_fm_with_basis_info(fm_P_B, 4, 6, force_env%sub_force_env(2)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!         ! Calculate fm_KS_A_in_B
+!         CALL cp_fm_to_fm(fm_KS_AA, fm_KS_A_in_B)
+!         CALL cp_fm_geadd(1.0_dp, 'N', fm_P_B, 1.0_dp, fm_KS_A_in_B)
+!         ! Print fm_KS_A_in_B
+!         CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "KS_A_in_B KS_A_in_B"
+!         CALL write_fm_with_basis_info(fm_KS_A_in_B, 4, 6, force_env%sub_force_env(2)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         ! Diagonalize fm_KS_A_in_B
+!         ! scf_env_do_scf in qs_scf.F
+!         ! qs_scf_new_mos in qs_scf_loop_utils.F
+!         ! START do_general_diag in qs_scf_diagonalization.F
+!         ! START general_eigenproblem in qs_scf_diagonalization.F
+!         CALL cp_fm_to_fm(fm_KS_A_in_B, fm_work1_A)
+!         CALL eigensolver_symm(fm_work1_A, mo_set_A(1)%mo_set, fm_ortho_A, fm_work2_A, &
+!                               .FALSE., 0.0_dp, fm_u_ghost, .FALSE., 0.0_dp)
+!         ! END general_eigenproblem in qs_scf_diagonalization.F
+!         ! Print MO coeffients of A in B
+!         CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "MO_COEFF_A_in_B"
+!         CALL write_fm_with_basis_info(mo_set_A(1)%mo_set%mo_coeff, 4, 6, &
+!                                       force_env%sub_force_env(2)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         CALL set_mo_occupation(mo_array=mo_set_A, smear=scf_control_A%smear)
+!         ! END do_general_diag in qs_scf_diagonalization.F
+!         ! update energy needed?
+!         ! END qs_scf_new_mos in qs_scf_loop_utils.F
+!         ! skip density mixing (hopefully it is correct)
+!
+!         ! Calculate fm_D_A_new (CP2K stores only occupied orbital coefficients?)
+!         CALL cp_fm_to_fm_submat(mo_set_A(1)%mo_set%mo_coeff, fm_occupied_MO_A, &
+!                                 naos(2), nmos(2), 1, 1, 1, 1)
+!         CALL cp_fm_gemm('N', 'T', naos(2), naos(2), nmos(2), 2.0_dp, &
+!                         fm_occupied_MO_A, fm_occupied_MO_A, 0.0_dp, fm_D_A_new)
+!         ! Print fm_D_A_new
+!         CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "fm_D_A_new"
+!         CALL write_fm_with_basis_info(fm_D_A_new, 4, 6, &
+!                                       force_env%sub_force_env(2)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         ! Calculate fm_D_A_diff
+!         CALL cp_fm_to_fm(fm_D_A_new, fm_D_A_diff)
+!         CALL cp_fm_geadd(-1.0_dp, 'N', fm_D_A_old, 1.0_dp, fm_D_A_diff)
+!         ! Print fm_D_A_diff
+!         CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "fm_D_A_diff"
+!         CALL write_fm_with_basis_info(fm_D_A_diff, 4, 6, &
+!                                       force_env%sub_force_env(2)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         ! Calculate Frobenius norm of fm_D_A_diff
+!         norm_D_A_diff = cp_fm_norm(fm_D_A_diff, 'F')
+!
+!         ! Copy_fm_D_A_new to fm_D_A_old
+!         CALL cp_fm_to_fm(fm_D_A_new, fm_D_A_old)
+!
+!         !
+!         ! Subsystem B
+!         !
+!
+!         ! Get fm_KS_BB
+!         CALL cp_fm_to_fm_submat(fm_KS_ref, fm_KS_BB, naos(1), naos(1), &
+!                                 1, 1, 1, 1)
+!         
+!         ! Calculate fm_tmp_4 = fm_KS_AB - E_fermi * fm_S_AB
+!         CALL cp_fm_to_fm(fm_S_AB, fm_tmp_4)
+!         CALL cp_fm_geadd(1.0_dp, 'N', fm_KS_AB, -1.0_dp * fermi_energy, fm_tmp_4)
+!         ! Calculate fm_tmp_5 = fm_D_A_old * fm_tmp_4
+!         CALL cp_fm_gemm('N', 'N', naos(2), naos(1), naos(2), 1.0_dp, &
+!                         fm_D_A_old, fm_tmp_4, 0.0_dp, fm_tmp_5)
+!         ! Calculate fm_tmp_6 = (fm_S_AB ^ T) * fm_tmp_5
+!         CALL cp_fm_gemm('T', 'N', naos(1), naos(1), naos(2), 1.0_dp, &
+!                         fm_S_AB, fm_tmp_5, 0.0_dp, fm_tmp_6)
+!         ! Calculate fm_P_A
+!         ! fm_P_A = -0.5 * (fm_tmp_6 + fm_tmp_6 ^ T)
+!         CALL cp_fm_to_fm(fm_tmp_6, fm_P_A)
+!         CALL cp_fm_geadd(-0.5_dp, 'T', fm_tmp_6, -0.5_dp, fm_P_A)
+!         ! Print fm_P_A
+!         CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "P_A P_A"
+!         CALL write_fm_with_basis_info(fm_P_A, 4, 6, force_env%sub_force_env(1)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!         ! Calculate fm_KS_B_in_A
+!         CALL cp_fm_to_fm(fm_KS_BB, fm_KS_B_in_A)
+!         CALL cp_fm_geadd(1.0_dp, 'N', fm_P_A, 1.0_dp, fm_KS_B_in_A)
+!         ! Print fm_KS_B_in_A
+!         CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "KS_B_in_A KS_B_in_A"
+!         CALL write_fm_with_basis_info(fm_KS_B_in_A, 4, 6, force_env%sub_force_env(1)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!         
+!         ! Diagonalize fm_KS_B_in_A
+!         ! scf_env_do_scf in qs_scf.F
+!         ! qs_scf_new_mos in qs_scf_loop_utils.F
+!         ! START do_general_diag in qs_scf_diagonalization.F
+!         ! START general_eigenproblem in qs_scf_diagonalization.F
+!         CALL cp_fm_to_fm(fm_KS_B_in_A, fm_work1_B)
+!         CALL eigensolver_symm(fm_work1_B, mo_set_B(1)%mo_set, fm_ortho_B, fm_work2_B, &
+!                               .FALSE., 0.0_dp, fm_u_ghost, .FALSE., 0.0_dp)
+!         ! END general_eigenproblem in qs_scf_diagonalization.F
+!         ! Print MO coeffients of B in A
+!         CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "MO_COEFF_B_in_A"
+!         CALL write_fm_with_basis_info(mo_set_B(1)%mo_set%mo_coeff, 4, 6, &
+!                                       force_env%sub_force_env(1)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         CALL set_mo_occupation(mo_array=mo_set_B, smear=scf_control_B%smear)
+!         ! END do_general_diag in qs_scf_diagonalization.F
+!         ! update energy needed?
+!         ! END qs_scf_new_mos in qs_scf_loop_utils.F
+!         ! skip density mixing (hopefully it is correct)
+!
+!         ! Calculate fm_D_B_new (CP2K stores only occupied orbital coefficients?)
+!         CALL cp_fm_to_fm_submat(mo_set_B(1)%mo_set%mo_coeff, fm_occupied_MO_B, &
+!                                 naos(1), nmos(1), 1, 1, 1, 1)
+!         CALL cp_fm_gemm('N', 'T', naos(1), naos(1), nmos(1), 2.0_dp, &
+!                         fm_occupied_MO_B, fm_occupied_MO_B, 0.0_dp, fm_D_B_new)
+!         ! Print fm_D_B_new
+!         CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "fm_D_B_new"
+!         CALL write_fm_with_basis_info(fm_D_B_new, 4, 6, &
+!                                       force_env%sub_force_env(1)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!         ! Calculate fm_D_B_diff
+!         CALL cp_fm_to_fm(fm_D_B_new, fm_D_B_diff)
+!         CALL cp_fm_geadd(-1.0_dp, 'N', fm_D_B_old, 1.0_dp, fm_D_B_diff)
+!         ! Print fm_D_B_diff
+!         CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "fm_D_B_diff"
+!         CALL write_fm_with_basis_info(fm_D_B_diff, 4, 6, &
+!                                       force_env%sub_force_env(1)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         ! Calculate Frobenius norm of fm_D_B_diff
+!         norm_D_B_diff = cp_fm_norm(fm_D_B_diff, 'F')
+!      
+!         ! Copy_fm_D_B_new to fm_D_B_old
+!         CALL cp_fm_to_fm(fm_D_B_new, fm_D_B_old)
+!
+!         ! Copy fm_D_A_old to fm_D_ref
+!         CALL cp_fm_to_fm_submat(fm_D_A_old, fm_D_ref, naos(2), naos(2), &
+!                                 1, 1, naos(1) + 1, naos(1) + 1)
+!         ! Copy fm_D_B_old to fm_D_ref
+!         CALL cp_fm_to_fm_submat(fm_D_B_old, fm_D_ref, naos(1), naos(1), &
+!                                 1, 1, 1, 1)
+!
+!         WRITE (output_unit, '(A)') ""
+!         WRITE (output_unit, '(A, ES15.6)') "norm_D_A_diff=", norm_D_A_diff 
+!         WRITE (output_unit, '(A, ES15.6)') "norm_D_B_diff=", norm_D_B_diff
+!
+!
+!         IF (norm_D_A_diff .LE. 1.0e-6_dp .AND. norm_D_B_diff .LE. 1.0e-6_dp) THEN
+!            WRITE (output_unit, '(A, I0, A)') "Lower loop converges after ", i_iter, " iterations."
+!            EXIT lower_loop_with_absolute_localization
+!         END IF
+!
+!      END DO lower_loop_with_absolute_localization
+!
+!      ELSE
+!
+!      ! Copy MO sets
+!      ! Subsystem A
+!      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, mos=mos)
+!      CALL duplicate_mo_set(mo_set_A(1)%mo_set, mos(1)%mo_set)
+!      ! Subsystem B
+!      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, mos=mos)
+!      CALL duplicate_mo_set(mo_set_B(1)%mo_set, mos(1)%mo_set)
+!
+!      ! Create fm_occupied_MO_A
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(3), ncol_global=nmos(2))
+!      CALL cp_fm_create(fm_occupied_MO_A, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      ! Create fm_occupied_MO_B
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(3), ncol_global=nmos(1))
+!      CALL cp_fm_create(fm_occupied_MO_B, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!
+!      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, &
+!                      matrix_s_kp=dbcsr_S_kp_A, rho=rho_A)
+!      CALL qs_rho_get(rho_A, rho_ao_kp=dbcsr_D_kp_A)
+!      ! Create fm_D_A_interface
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(2), ncol_global=naos(2))
+!      CALL cp_fm_create(fm_D_A_interface, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      ! Create fm_ortho_A, fm_work1_A, fm_work2_A, fm_S_A, fm_KS_AA, 
+!      ! fm_D_A_old, fm_D_A_new, fm_D_A_diff, fm_KS_A_in_B and fm_P_B
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(3), ncol_global=naos(3))
+!      CALL cp_fm_create(fm_ortho_A, fm_struct)
+!      CALL cp_fm_create(fm_work1_A, fm_struct)
+!      CALL cp_fm_create(fm_work2_A, fm_struct)
+!      CALL cp_fm_create(fm_S_A, fm_struct)
+!      CALL cp_fm_create(fm_KS_AA, fm_struct)
+!      CALL cp_fm_create(fm_D_A_old, fm_struct)
+!      CALL cp_fm_create(fm_D_A_new, fm_struct)
+!      CALL cp_fm_create(fm_D_A_diff, fm_struct)
+!      CALL cp_fm_create(fm_P_B, fm_struct)
+!      CALL cp_fm_create(fm_KS_A_in_B, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      ! Get fm_S_A
+!      CALL copy_dbcsr_to_fm(dbcsr_S_kp_ref(1, 1)%matrix, fm_S_A)
+!      ! Get fm_D_A_old
+!      CALL copy_dbcsr_to_fm(dbcsr_D_kp_A(1, 1)%matrix, fm_D_A_interface)
+!      CALL cp_fm_set_all(fm_D_A_old, 0.0_dp, 0.0_dp)
+!      CALL cp_fm_to_fm_submat(fm_D_A_interface, fm_D_A_old, naos(2), naos(2), &
+!                              1, 1, naos(1) + 1, naos(1) + 1)
+!
+!      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, &
+!                      matrix_s_kp=dbcsr_S_kp_B, rho=rho_B)
+!      CALL qs_rho_get(rho_B, rho_ao_kp=dbcsr_D_kp_B)
+!      ! Create fm_D_B_interface
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(1), ncol_global=naos(1))
+!      CALL cp_fm_create(fm_D_B_interface, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      ! Create fm_ortho_B, fm_work1_B, fm_work2_B, fm_S_B, fm_KS_BB, 
+!      ! fm_D_B_old, fm_D_B_new, fm_D_B_diff, fm_KS_B_in_A and fm_P_A
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(3), ncol_global=naos(3))
+!      CALL cp_fm_create(fm_ortho_B, fm_struct)
+!      CALL cp_fm_create(fm_work1_B, fm_struct)
+!      CALL cp_fm_create(fm_work2_B, fm_struct)
+!      CALL cp_fm_create(fm_S_B, fm_struct)
+!      CALL cp_fm_create(fm_KS_BB, fm_struct)
+!      CALL cp_fm_create(fm_D_B_old, fm_struct)
+!      CALL cp_fm_create(fm_D_B_new, fm_struct)
+!      CALL cp_fm_create(fm_D_B_diff, fm_struct)
+!      CALL cp_fm_create(fm_P_A, fm_struct)
+!      CALL cp_fm_create(fm_KS_B_in_A, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!      ! Get fm_S_B
+!      CALL copy_dbcsr_to_fm(dbcsr_S_kp_ref(1, 1)%matrix, fm_S_B)
+!      ! Get fm_D_B_old
+!      CALL copy_dbcsr_to_fm(dbcsr_D_kp_B(1, 1)%matrix, fm_D_B_interface)
+!      CALL cp_fm_set_all(fm_D_B_old, 0.0_dp, 0.0_dp)
+!      CALL cp_fm_to_fm_submat(fm_D_B_interface, fm_D_B_old, naos(1), naos(1), &
+!                              1, 1, 1, 1)
+!
+!      ! Get ready for diagonalization in subsystem A
+!      n_dep_A = 0
+!      CALL cp_fm_to_fm(fm_S_ref, fm_ortho_A)
+!      CALL cp_fm_power(fm_ortho_A, fm_work2_A, -0.5_dp, 1.0E-5_dp, n_dep_A)
+!      ! Get ready for diagonalization in subsystem B
+!      n_dep_B = 0
+!      CALL cp_fm_to_fm(fm_S_ref, fm_ortho_B)
+!      CALL cp_fm_power(fm_ortho_B, fm_work2_B, -0.5_dp, 1.0E-5_dp, n_dep_B)
+!
+!      ! Create fm_tmp_1, fm_tmp_2 and fm_tmp_3
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(3), ncol_global=naos(3))
+!      CALL cp_fm_create(fm_tmp_1, fm_struct)
+!      CALL cp_fm_create(fm_tmp_2, fm_struct)
+!      CALL cp_fm_create(fm_tmp_3, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!
+!      ! Create fm_tmp_4, fm_tmp_5 and fm_tmp_6
+!      CALL cp_fm_struct_create(fm_struct, context=blacs_env, para_env=para_env, &
+!                               nrow_global=naos(3), ncol_global=naos(3))
+!      CALL cp_fm_create(fm_tmp_4, fm_struct)
+!      CALL cp_fm_create(fm_tmp_5, fm_struct)
+!      CALL cp_fm_create(fm_tmp_6, fm_struct)
+!      CALL cp_fm_struct_release(fm_struct)
+!
+!      ! Test for it!
+!
+!      ! ************************************************************
+!      ! Is diis_step in ref always .FALSE. ?
+!      ! ************************************************************
+!      ! mentioned in do_general_diag.F
+!      WRITE (output_unit, '(A, E16.6)') "for_ref scf_env%sum_zeff_corr_for_ref=", scf_env_ref%sum_zeff_corr
+!      WRITE (output_unit, '(A, I0)') "for_ref scf_env%mixing_method=", scf_env_ref%mixing_method
+!      WRITE (output_unit, '(A, I0)') "for_ref scf_env%method=", scf_env_ref%method
+!      WRITE (output_unit, '(A, L)') "for_ref scf_control%diagonalization%mom=", scf_control_ref%diagonalization%mom
+!      WRITE (output_unit, '(A, L)') "for_ref scf_control%smear%do_smear=", scf_control_ref%smear%do_smear
+!      WRITE (output_unit, '(A, L)') "for_ref scf_control%do_diag_sub=", scf_control_ref%do_diag_sub
+!
+!      WRITE (output_unit, '(A)') "" 
+!      WRITE (output_unit, '(A)') ""
+!
+!      ! Set fm_D_ref as 0
+!      CALL cp_fm_set_all(fm_D_ref, 0.0_dp, 0.0_dp)
+!      ! Get fm_D_ref
+!      CALL cp_fm_to_fm_submat(fm_D_A_old, fm_D_ref, naos(2), naos(2), &
+!                              naos(1) + 1, naos(1) + 1, naos(1) + 1, naos(1) + 1)
+!      CALL cp_fm_to_fm_submat(fm_D_B_old, fm_D_ref, naos(1), naos(1), &
+!                              1, 1, 1, 1)
+!
+!      lower_loop_without_absolute_localization: DO i_iter = 1, 100
+!
+!         WRITE (output_unit, '(A)') ""
+!         WRITE (output_unit, '(A)') "WITHOUT ABSOLUTE LOCALIZATION"
+!         WRITE (output_unit, '(A, I0)') "iter ", i_iter
+!
+!         ! Copy fm_D_ref to dbcsr_D_kp_ref (rho_ao_kp for the reference system)
+!         CALL copy_fm_to_dbcsr(fm_D_ref, dbcsr_D_kp_ref(1, 1)%matrix)
+!         ! Print dbcsr_D_kp_ref
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         CALL cp_dbcsr_write_sparse_matrix(dbcsr_D_kp_ref(1, 1)%matrix, 4, 6, &
+!                                           force_env%sub_force_env(3)%force_env%qs_env, para_env, &
+!                                           output_unit=output_unit)
+!         ! Update the density matrix of ref
+!         CALL qs_scf_rho_update(rho_ref, force_env%sub_force_env(3)%force_env%qs_env, &
+!                                scf_env_ref, ks_env_ref, .FALSE.) 
+!         ! Update the Kohn-Sham matrix of ref
+!         CALL qs_ks_update_qs_env(force_env%sub_force_env(3)%force_env%qs_env, &
+!                                  just_energy=.FALSE., calculate_forces=.FALSE., print_active=.TRUE.)
+!         ! Print dbcsr_KS_kp_ref
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         CALL cp_dbcsr_write_sparse_matrix(dbcsr_KS_kp_ref(1, 1)%matrix, 4, 6, &
+!                                           force_env%sub_force_env(3)%force_env%qs_env, para_env, &
+!                                           output_unit=output_unit)
+!         ! Get fm_KS_ref
+!         CALL copy_dbcsr_to_fm(dbcsr_KS_kp_ref(1, 1)%matrix, fm_KS_ref)
+!
+!         !
+!         ! Subsystem A
+!         !
+!
+!         ! Get fm_KS_AA
+!         CALL cp_fm_to_fm(fm_KS_ref, fm_KS_AA)
+!
+!         ! Calculate fm_tmp_1 = fm_KS_AA - E_fermi * fm_S_ref
+!         CALL cp_fm_to_fm(fm_S_ref, fm_tmp_1)
+!         CALL cp_fm_geadd(1.0_dp, 'N', fm_KS_AA, -1.0_dp * fermi_energy, fm_tmp_1)
+!         ! Calculate fm_tmp_2 = fm_tmp_1 * fm_D_B_old
+!         CALL cp_fm_gemm('N', 'N', naos(3), naos(3), naos(3), 1.0_dp, &
+!                         fm_tmp_1, fm_D_B_old, 0.0_dp, fm_tmp_2)
+!         ! Calculate fm_tmp_3 = fm_tmp_2 * (fm_S_ref ^ T)
+!         CALL cp_fm_gemm('N', 'T', naos(3), naos(3), naos(3), 1.0_dp, &
+!                         fm_tmp_2, fm_S_ref, 0.0_dp, fm_tmp_3)
+!         ! Calculate fm_P_B
+!         ! fm_P_B = -0.5 * (fm_tmp_3 + fm_tmp_3 ^ T)
+!         CALL cp_fm_to_fm(fm_tmp_3, fm_P_B)
+!         CALL cp_fm_geadd(-0.5_dp, 'T', fm_tmp_3, -0.5_dp, fm_P_B)
+!         ! Print fm_P_B
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "P_B P_B"
+!         CALL write_fm_with_basis_info(fm_P_B, 4, 6, force_env%sub_force_env(3)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!         ! Calculate fm_KS_A_in_B
+!         CALL cp_fm_to_fm(fm_KS_AA, fm_KS_A_in_B)
+!         CALL cp_fm_geadd(1.0_dp, 'N', fm_P_B, 1.0_dp, fm_KS_A_in_B)
+!         ! Print fm_KS_A_in_B
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "KS_A_in_B KS_A_in_B"
+!         CALL write_fm_with_basis_info(fm_KS_A_in_B, 4, 6, force_env%sub_force_env(3)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         ! Diagonalize fm_KS_A_in_B
+!         ! scf_env_do_scf in qs_scf.F
+!         ! qs_scf_new_mos in qs_scf_loop_utils.F
+!         ! START do_general_diag in qs_scf_diagonalization.F
+!         ! START general_eigenproblem in qs_scf_diagonalization.F
+!         CALL cp_fm_to_fm(fm_KS_A_in_B, fm_work1_A)
+!         CALL eigensolver_symm(fm_work1_A, mo_set_A(1)%mo_set, fm_ortho_A, fm_work2_A, &
+!                               .FALSE., 0.0_dp, fm_u_ghost, .FALSE., 0.0_dp)
+!         ! END general_eigenproblem in qs_scf_diagonalization.F
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "MO_COEFF_A_in_B"
+!         CALL write_fm_with_basis_info(mo_set_A(1)%mo_set%mo_coeff, 4, 6, &
+!                                       force_env%sub_force_env(3)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         CALL set_mo_occupation(mo_array=mo_set_A, smear=scf_control_ref%smear)
+!         ! END do_general_diag in qs_scf_diagonalization.F
+!         ! update energy needed?
+!         ! END qs_scf_new_mos in qs_scf_loop_utils.F
+!         ! skip density mixing (hopefully it is correct)
+!
+!         ! Calculate fm_D_A_new (CP2K stores only occupied orbital coefficients?)
+!         CALL cp_fm_to_fm_submat(mo_set_A(1)%mo_set%mo_coeff, fm_occupied_MO_A, &
+!                                 naos(3), nmos(2), 1, 1, 1, 1)
+!         CALL cp_fm_gemm('N', 'T', naos(3), naos(3), nmos(2), 2.0_dp, &
+!                         fm_occupied_MO_A, fm_occupied_MO_A, 0.0_dp, fm_D_A_new)
+!         ! Print fm_D_A_new
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "fm_D_A_new"
+!         CALL write_fm_with_basis_info(fm_D_A_new, 4, 6, &
+!                                       force_env%sub_force_env(3)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         ! Calculate fm_D_A_diff
+!         CALL cp_fm_to_fm(fm_D_A_new, fm_D_A_diff)
+!         CALL cp_fm_geadd(-1.0_dp, 'N', fm_D_A_old, 1.0_dp, fm_D_A_diff)
+!         ! Print fm_D_A_diff
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "fm_D_A_diff"
+!         CALL write_fm_with_basis_info(fm_D_A_diff, 4, 6, &
+!                                       force_env%sub_force_env(3)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         ! Calculate Frobenius norm of fm_D_A_diff
+!         norm_D_A_diff = cp_fm_norm(fm_D_A_diff, 'F')
+!
+!         ! Copy_fm_D_A_new to fm_D_A_old
+!         CALL cp_fm_to_fm(fm_D_A_new, fm_D_A_old)
+!
+!         !
+!         ! Subsystem B
+!         !
+!
+!         ! Get fm_KS_BB
+!         CALL cp_fm_to_fm(fm_KS_ref, fm_KS_BB)
+!
+!         ! Calculate fm_tmp_4 = fm_KS_BB - E_fermi * fm_S_ref
+!         CALL cp_fm_to_fm(fm_S_ref, fm_tmp_4)
+!         CALL cp_fm_geadd(1.0_dp, 'N', fm_KS_BB, -1.0_dp * fermi_energy, fm_tmp_4)
+!         ! Calculate fm_tmp_5 = fm_D_A_old * fm_tmp_4
+!         CALL cp_fm_gemm('N', 'N', naos(3), naos(3), naos(3), 1.0_dp, &
+!                         fm_D_A_old, fm_tmp_4, 0.0_dp, fm_tmp_5)
+!         ! Calculate fm_tmp_6 = (fm_S_ref ^ T) * fm_tmp_5
+!         CALL cp_fm_gemm('T', 'N', naos(3), naos(3), naos(3), 1.0_dp, &
+!                         fm_S_ref, fm_tmp_5, 0.0_dp, fm_tmp_6)
+!         ! Calculate fm_P_A
+!         ! fm_P_A = -0.5 * (fm_tmp_6 + fm_tmp_6 ^ T)
+!         CALL cp_fm_to_fm(fm_tmp_6, fm_P_A)
+!         CALL cp_fm_geadd(-0.5_dp, 'T', fm_tmp_6, -0.5_dp, fm_P_A)
+!         ! Print fm_P_A
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "P_A P_A"
+!         CALL write_fm_with_basis_info(fm_P_A, 4, 6, force_env%sub_force_env(3)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!         ! Calculate fm_KS_B_in_A
+!         CALL cp_fm_to_fm(fm_KS_BB, fm_KS_B_in_A)
+!         CALL cp_fm_geadd(1.0_dp, 'N', fm_P_A, 1.0_dp, fm_KS_B_in_A)
+!         ! Print fm_KS_B_in_A
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "KS_B_in_A KS_B_in_A"
+!         CALL write_fm_with_basis_info(fm_KS_B_in_A, 4, 6, force_env%sub_force_env(3)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         ! Diagonalize fm_KS_B_in_A
+!         ! scf_env_do_scf in qs_scf.F
+!         ! qs_scf_new_mos in qs_scf_loop_utils.F
+!         ! START do_general_diag in qs_scf_diagonalization.F
+!         ! START general_eigenproblem in qs_scf_diagonalization.F
+!         CALL cp_fm_to_fm(fm_KS_B_in_A, fm_work1_B)
+!         CALL eigensolver_symm(fm_work1_B, mo_set_B(1)%mo_set, fm_ortho_B, fm_work2_B, &
+!                               .FALSE., 0.0_dp, fm_u_ghost, .FALSE., 0.0_dp)
+!         ! END general_eigenproblem in qs_scf_diagonalization.F
+!         ! Print MO coeffients of B in A
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "MO_COEFF_B_in_A"
+!         CALL write_fm_with_basis_info(mo_set_B(1)%mo_set%mo_coeff, 4, 6, &
+!                                       force_env%sub_force_env(3)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         CALL set_mo_occupation(mo_array=mo_set_B, smear=scf_control_B%smear)
+!         ! END do_general_diag in qs_scf_diagonalization.F
+!         ! update energy needed?
+!         ! END qs_scf_new_mos in qs_scf_loop_utils.F
+!         ! skip density mixing (hopefully it is correct)
+!
+!         ! Calculate fm_D_B_new (CP2K stores only occupied orbital coefficients?)
+!         CALL cp_fm_to_fm_submat(mo_set_B(1)%mo_set%mo_coeff, fm_occupied_MO_B, &
+!                                 naos(3), nmos(1), 1, 1, 1, 1)
+!         CALL cp_fm_gemm('N', 'T', naos(3), naos(3), nmos(1), 2.0_dp, &
+!                         fm_occupied_MO_B, fm_occupied_MO_B, 0.0_dp, fm_D_B_new)
+!         ! Print fm_D_B_new
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "fm_D_B_new"
+!         CALL write_fm_with_basis_info(fm_D_B_new, 4, 6, &
+!                                       force_env%sub_force_env(3)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         ! Calculate fm_D_B_diff
+!         CALL cp_fm_to_fm(fm_D_B_new, fm_D_B_diff)
+!         CALL cp_fm_geadd(-1.0_dp, 'N', fm_D_B_old, 1.0_dp, fm_D_B_diff)
+!         ! Print fm_D_B_diff
+!         CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!         WRITE (output_unit, '(A)') "fm_D_B_diff"
+!         CALL write_fm_with_basis_info(fm_D_B_diff, 4, 6, &
+!                                       force_env%sub_force_env(3)%force_env%qs_env, &
+!                                       para_env, output_unit=output_unit)
+!
+!         ! Calculate Frobenius norm of fm_D_B_diff
+!         norm_D_B_diff = cp_fm_norm(fm_D_B_diff, 'F')
+!
+!         ! Copy_fm_D_B_new to fm_D_B_old
+!         CALL cp_fm_to_fm(fm_D_B_new, fm_D_B_old)
+!
+!         ! Calculate fm_D_ref
+!         CALL cp_fm_to_fm(fm_D_A_old, fm_D_ref)
+!         CALL cp_fm_geadd(1.0_dp, 'N', fm_D_B_old, 1.0_dp, fm_D_ref)
+!
+!         WRITE (output_unit, '(A)') ""
+!         WRITE (output_unit, '(A, ES15.6)') "norm_D_A_diff=", norm_D_A_diff 
+!         WRITE (output_unit, '(A, ES15.6)') "norm_D_B_diff=", norm_D_B_diff
+!
+!         IF (norm_D_A_diff .LE. 1.0e-6_dp .AND. norm_D_B_diff .LE. 1.0e-6_dp) THEN
+!            WRITE (output_unit, '(A, I0, A)') "Lower loop converges after ", i_iter, " iterations."
+!            EXIT lower_loop_without_absolute_localization
+!         END IF
+!
+!
+!      END DO lower_loop_without_absolute_localization
+!
+!      END IF
+!
+!      ! Calculate energy
+!      CALL qs_scf_print_summary(output_unit, force_env%sub_force_env(3)%force_env%qs_env)
+!
+!      ! Check the method to calculate energy
+!      ! Copy fm_D_ref_old to dbcsr_D_kp_ref (rho_ao_kp for the reference system)
+!      CALL copy_fm_to_dbcsr(fm_D_ref_old, dbcsr_D_kp_ref(1, 1)%matrix)
+!      ! Print dbcsr_D_kp_ref
+!      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, para_env=para_env)
+!      CALL cp_dbcsr_write_sparse_matrix(dbcsr_D_kp_ref(1, 1)%matrix, 4, 6, &
+!                                          force_env%sub_force_env(3)%force_env%qs_env, para_env, &
+!                                          output_unit=output_unit)
+!      ! Update the density matrix of ref
+!      CALL qs_scf_rho_update(rho_ref, force_env%sub_force_env(3)%force_env%qs_env, &
+!                             scf_env_ref, ks_env_ref, .FALSE.) 
+!      ! Update the Kohn-Sham matrix of ref
+!      CALL qs_ks_update_qs_env(force_env%sub_force_env(3)%force_env%qs_env, &
+!                               just_energy=.FALSE., calculate_forces=.FALSE., print_active=.TRUE.)
+!      CALL qs_scf_print_summary(output_unit, force_env%sub_force_env(3)%force_env%qs_env)
 
       CPABORT("TEST ENDS")
 
-      DEALLOCATE (naos)
-      DEALLOCATE (nmos)
-      DEALLOCATE (natoms)
+!      DEALLOCATE (naos)
+!      DEALLOCATE (nmos)
+!      DEALLOCATE (natoms)
 
-      DEALLOCATE (mo_set_A)
-      DEALLOCATE (mo_set_B)
-      DEALLOCATE (mo_set_ref)
+!      DEALLOCATE (mo_set_A)
+!      DEALLOCATE (mo_set_B)
+!      DEALLOCATE (mo_set_ref)
 
       WRITE (output_unit, '(A)') " "
       WRITE (output_unit, '(A)') " "

@@ -28,7 +28,7 @@ MODULE optimize_pbpe_potential
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
    USE qs_mo_types,                     ONLY: get_mo_set,&
-                                              mo_set_p_type
+                                              mo_set_type
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -44,72 +44,6 @@ CONTAINS
 ! **************************************************************************************************
 !> \brief ...
 !> \param force_env ...
-!> \param opt_pbpe ...
-!> \param opt_pbpe_section ...
-! **************************************************************************************************
-   SUBROUTINE prepare_pbpe_opt(force_env, opt_pbpe, opt_pbpe_section)
-      TYPE(force_env_type), POINTER                      :: force_env
-      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
-      TYPE(section_vals_type), POINTER                   :: opt_pbpe_section
-
-      INTEGER                                            :: i_force_eval, n_force_eval
-      TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
-
-      ! Read the input
-      CALL read_opt_pbpe_section(opt_pbpe, opt_pbpe_section)
-
-      n_force_eval = SIZE(force_env%sub_force_env)
-
-      ALLOCATE (opt_pbpe%naos(n_force_eval))
-      ALLOCATE (opt_pbpe%nmos(n_force_eval))
-      ALLOCATE (opt_pbpe%mo_coeffs(n_force_eval))
-
-      ! Get info of subsystems 
-      DO i_force_eval = 1, n_force_eval
-         CALL get_qs_env(qs_env=force_env%sub_force_env(i_force_eval)%force_env%qs_env, &
-                         dft_control=dft_control, mos=mos)
-         CALL get_mo_set(mos(1)%mo_set, nao=opt_pbpe%naos(i_force_eval), nmo=opt_pbpe%nmos(i_force_eval))
-         IF (dft_control%qs_control%cluster_embed_subsys) THEN
-            opt_pbpe%cluster_subsys_num = i_force_eval
-         ELSE IF (dft_control%qs_control%ref_embed_subsys) THEN
-            opt_pbpe%ref_subsys_num = i_force_eval
-         ELSE IF (dft_control%qs_control%high_level_embed_subsys) THEN
-            opt_pbpe%high_level_subsys_num = i_force_eval
-         END IF
-      END DO
-
-      IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
-         opt_pbpe%environment_subsys_num = 2
-      ELSE IF (opt_pbpe%cluster_subsys_num .EQ. 2) THEN
-         opt_pbpe%environment_subsys_num = 1
-      END IF
-
-      ! Get the orbital coefficients
-      DO i_force_eval = 1, n_force_eval - 1
-         CALL get_qs_env(qs_env=force_env%sub_force_env(i_force_eval)%force_env%qs_env, mos=mos)
-         CALL get_mo_set(mo_set=mos(1)%mo_set, mo_coeff=opt_pbpe%mo_coeffs(i_force_eval)%matrix)
-      END DO
-
-      ! Make cp_fm matrices
-      CALL prepare_pbpe_matrices(force_env, opt_pbpe)
-
-   END SUBROUTINE prepare_pbpe_opt
-
-! **************************************************************************************************
-!> \brief ...
-!> \param opt_pbpe ...
-! **************************************************************************************************
-   SUBROUTINE release_pbpe_opt(opt_pbpe)
-      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
-
-      CALL release_pbpe_matrices(opt_pbpe)
-
-   END SUBROUTINE release_pbpe_opt
-
-! **************************************************************************************************
-!> \brief ...
-!> \param force_env ...
 ! **************************************************************************************************
    SUBROUTINE check_pbpe_system(force_env)
       TYPE(force_env_type), POINTER                      :: force_env
@@ -120,7 +54,7 @@ CONTAINS
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: naos, nmos
       LOGICAL                                            :: do_kpoints
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
 
       cluster_subsys_num = 0
       high_level_subsys_num = 0
@@ -136,7 +70,7 @@ CONTAINS
       DO i_force_eval = 1, n_force_eval
          CALL get_qs_env(qs_env=force_env%sub_force_env(i_force_eval)%force_env%qs_env, &
                          do_kpoints=do_kpoints, dft_control=dft_control, mos=mos)
-         CALL get_mo_set(mos(1)%mo_set, nao=naos(i_force_eval), nmo=nmos(i_force_eval))
+         CALL get_mo_set(mos(1), nao=naos(i_force_eval), nmo=nmos(i_force_eval))
          IF (dft_control%qs_control%cluster_embed_subsys) THEN
             cluster_subsys_num = i_force_eval
          ELSE IF (dft_control%qs_control%ref_embed_subsys) THEN
@@ -174,30 +108,6 @@ CONTAINS
       DEALLOCATE (nmos)
 
    END SUBROUTINE check_pbpe_system
-
-! **************************************************************************************************
-!> \brief ...
-!> \param opt_pbpe ...
-! **************************************************************************************************
-   SUBROUTINE read_opt_pbpe_section(opt_pbpe, opt_pbpe_section)
-      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
-      TYPE(section_vals_type), POINTER                   :: opt_pbpe_section
-
-      ! Read keywords
-
-      CALL section_vals_val_get(opt_pbpe_section, "N_ITER", &
-                                i_val=opt_pbpe%n_iter)
-
-      CALL section_vals_val_get(opt_pbpe_section, "ABS_LOC", &
-                                l_val=opt_pbpe%abs_localization)
-
-      CALL section_vals_val_get(opt_pbpe_section, "DM_CONV_MAX", &
-                                r_val=opt_pbpe%conv_max)
-
-      CALL section_vals_val_get(opt_pbpe_section, "DM_CONV_RMSE", &
-                                r_val=opt_pbpe%conv_rmse)
-
-   END SUBROUTINE read_opt_pbpe_section
 
 ! **************************************************************************************************
 !> \brief ...
@@ -500,6 +410,85 @@ CONTAINS
 
 ! **************************************************************************************************
 !> \brief ...
+!> \param force_env ...
+!> \param opt_pbpe ...
+!> \param opt_pbpe_section ...
+! **************************************************************************************************
+   SUBROUTINE prepare_pbpe_opt(force_env, opt_pbpe, opt_pbpe_section)
+      TYPE(force_env_type), POINTER                      :: force_env
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+      TYPE(section_vals_type), POINTER                   :: opt_pbpe_section
+
+      INTEGER                                            :: i_force_eval, n_force_eval
+      TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
+
+      ! Read the input
+      CALL read_opt_pbpe_section(opt_pbpe, opt_pbpe_section)
+
+      n_force_eval = SIZE(force_env%sub_force_env)
+
+      ALLOCATE (opt_pbpe%naos(n_force_eval))
+      ALLOCATE (opt_pbpe%nmos(n_force_eval))
+      ALLOCATE (opt_pbpe%mo_coeffs(n_force_eval))
+
+      ! Get info of subsystems 
+      DO i_force_eval = 1, n_force_eval
+         CALL get_qs_env(qs_env=force_env%sub_force_env(i_force_eval)%force_env%qs_env, &
+                         dft_control=dft_control, mos=mos)
+         CALL get_mo_set(mos(1), nao=opt_pbpe%naos(i_force_eval), nmo=opt_pbpe%nmos(i_force_eval))
+         IF (dft_control%qs_control%cluster_embed_subsys) THEN
+            opt_pbpe%cluster_subsys_num = i_force_eval
+         ELSE IF (dft_control%qs_control%ref_embed_subsys) THEN
+            opt_pbpe%ref_subsys_num = i_force_eval
+         ELSE IF (dft_control%qs_control%high_level_embed_subsys) THEN
+            opt_pbpe%high_level_subsys_num = i_force_eval
+         END IF
+      END DO
+
+      IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
+         opt_pbpe%environment_subsys_num = 2
+      ELSE IF (opt_pbpe%cluster_subsys_num .EQ. 2) THEN
+         opt_pbpe%environment_subsys_num = 1
+      END IF
+
+      ! Get the orbital coefficients
+      DO i_force_eval = 1, n_force_eval - 1
+         CALL get_qs_env(qs_env=force_env%sub_force_env(i_force_eval)%force_env%qs_env, mos=mos)
+         CALL get_mo_set(mo_set=mos(1), mo_coeff=opt_pbpe%mo_coeffs(i_force_eval)%matrix)
+      END DO
+
+      ! Make cp_fm matrices
+      CALL prepare_pbpe_matrices(force_env, opt_pbpe)
+
+   END SUBROUTINE prepare_pbpe_opt
+
+! **************************************************************************************************
+!> \brief ...
+!> \param opt_pbpe ...
+! **************************************************************************************************
+   SUBROUTINE read_opt_pbpe_section(opt_pbpe, opt_pbpe_section)
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+      TYPE(section_vals_type), POINTER                   :: opt_pbpe_section
+
+      ! Read keywords
+
+      CALL section_vals_val_get(opt_pbpe_section, "N_ITER", &
+                                i_val=opt_pbpe%n_iter)
+
+      CALL section_vals_val_get(opt_pbpe_section, "ABS_LOC", &
+                                l_val=opt_pbpe%abs_localization)
+
+      CALL section_vals_val_get(opt_pbpe_section, "DM_CONV_MAX", &
+                                r_val=opt_pbpe%conv_max)
+
+      CALL section_vals_val_get(opt_pbpe_section, "DM_CONV_RMSE", &
+                                r_val=opt_pbpe%conv_rmse)
+
+   END SUBROUTINE read_opt_pbpe_section
+
+! **************************************************************************************************
+!> \brief ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
    SUBROUTINE release_pbpe_matrices(opt_pbpe)
@@ -692,5 +681,16 @@ CONTAINS
       END IF
 
    END SUBROUTINE release_pbpe_matrices
+
+! **************************************************************************************************
+!> \brief ...
+!> \param opt_pbpe ...
+! **************************************************************************************************
+   SUBROUTINE release_pbpe_opt(opt_pbpe)
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+
+      CALL release_pbpe_matrices(opt_pbpe)
+
+   END SUBROUTINE release_pbpe_opt
 
 END MODULE optimize_pbpe_potential

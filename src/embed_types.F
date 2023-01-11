@@ -13,7 +13,8 @@ MODULE embed_types
    USE cell_types,                      ONLY: cell_release,&
                                               cell_retain,&
                                               cell_type
-   USE cp_fm_types,                     ONLY: cp_fm_type
+   USE cp_fm_types,                     ONLY: cp_fm_p_type,&
+                                              cp_fm_type
    USE cp_log_handling,                 ONLY: cp_logger_p_type,&
                                               cp_logger_release
    USE cp_para_env,                     ONLY: cp_para_env_release,&
@@ -127,6 +128,7 @@ MODULE embed_types
                                                           HOMO_energy_A, HOMO_energy_B, &
                                                           norm_D_A_diff, norm_D_B_diff
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)         :: max_diff
+      TYPE(cp_fm_p_type), ALLOCATABLE, DIMENSION(:)    :: mo_coeffs
       TYPE(cp_fm_type), POINTER                        :: dm_1, dm_2, dm_total, &
                                                           dm_1_beta, dm_2_beta, dm_total_beta, &
                                                           dm_1_diff, dm_2_diff, dm_total_diff, &
