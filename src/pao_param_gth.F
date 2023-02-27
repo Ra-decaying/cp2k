@@ -24,11 +24,11 @@ MODULE pao_param_gth
    USE iterate_matrix,                  ONLY: matrix_sqrt_Newton_Schulz
    USE kinds,                           ONLY: dp
    USE machine,                         ONLY: m_flush
-   USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_min,&
-                                              mp_sum
+   USE message_passing,                 ONLY: mp_comm_type
    USE orbital_pointers,                ONLY: init_orbital_pointers
    USE pao_param_fock,                  ONLY: pao_calc_U_block_fock
+   USE pao_param_methods,               ONLY: pao_calc_AB_from_U,&
+                                              pao_calc_grad_lnv_wrt_U
    USE pao_potentials,                  ONLY: pao_calc_gaussian
    USE pao_types,                       ONLY: pao_env_type
    USE particle_types,                  ONLY: particle_type
@@ -43,7 +43,7 @@ MODULE pao_param_gth
 
    PRIVATE
 
-   PUBLIC :: pao_param_init_gth, pao_param_finalize_gth, pao_calc_U_gth
+   PUBLIC :: pao_param_init_gth, pao_param_finalize_gth, pao_calc_AB_gth
    PUBLIC :: pao_param_count_gth, pao_param_initguess_gth
 
 CONTAINS
@@ -206,7 +206,7 @@ CONTAINS
          END DO
          CALL dbcsr_iterator_stop(iter)
 
-         CALL mp_sum(block, group)
+         CALL group%sum(block)
 
          CALL dbcsr_get_block_p(matrix=matrix_gth_overlap, row=iatom, col=jatom, block=block_overlap, found=found)
          IF (ASSOCIATED(block_overlap)) &
@@ -240,16 +240,58 @@ CONTAINS
    END SUBROUTINE pao_param_gth_preconditioner
 
 ! **************************************************************************************************
+!> \brief Takes current matrix_X and calculates the matrices A and B.
+!> \param pao ...
+!> \param qs_env ...
+!> \param ls_scf_env ...
+!> \param gradient ...
+!> \param penalty ...
+! **************************************************************************************************
+   SUBROUTINE pao_calc_AB_gth(pao, qs_env, ls_scf_env, gradient, penalty)
+      TYPE(pao_env_type), POINTER                        :: pao
+      TYPE(qs_environment_type), POINTER                 :: qs_env
+      TYPE(ls_scf_env_type), TARGET                      :: ls_scf_env
+      LOGICAL, INTENT(IN)                                :: gradient
+      REAL(dp), INTENT(INOUT), OPTIONAL                  :: penalty
+
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'pao_calc_AB_gth'
+
+      INTEGER                                            :: handle
+      TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s
+      TYPE(dbcsr_type)                                   :: matrix_M, matrix_U
+
+      CALL timeset(routineN, handle)
+      CALL get_qs_env(qs_env, matrix_s=matrix_s)
+      CALL dbcsr_create(matrix_U, matrix_type="N", dist=pao%diag_distribution, template=matrix_s(1)%matrix)
+      CALL dbcsr_reserve_diag_blocks(matrix_U)
+
+      !TODO: move this condition into pao_calc_U, use matrix_N as template
+      IF (gradient) THEN
+         CALL pao_calc_grad_lnv_wrt_U(qs_env, ls_scf_env, matrix_M)
+         CALL pao_calc_U_gth(pao, matrix_U, matrix_M, pao%matrix_G, penalty)
+         CALL dbcsr_release(matrix_M)
+      ELSE
+         CALL pao_calc_U_gth(pao, matrix_U, penalty=penalty)
+      END IF
+
+      CALL pao_calc_AB_from_U(pao, qs_env, ls_scf_env, matrix_U)
+      CALL dbcsr_release(matrix_U)
+      CALL timestop(handle)
+   END SUBROUTINE pao_calc_AB_gth
+
+! **************************************************************************************************
 !> \brief Calculate new matrix U and optinally its gradient G
 !> \param pao ...
-!> \param penalty ...
+!> \param matrix_U ...
 !> \param matrix_M1 ...
 !> \param matrix_G ...
+!> \param penalty ...
 ! **************************************************************************************************
-   SUBROUTINE pao_calc_U_gth(pao, penalty, matrix_M1, matrix_G)
+   SUBROUTINE pao_calc_U_gth(pao, matrix_U, matrix_M1, matrix_G, penalty)
       TYPE(pao_env_type), POINTER                        :: pao
-      REAL(dp), INTENT(INOUT), OPTIONAL                  :: penalty
+      TYPE(dbcsr_type)                                   :: matrix_U
       TYPE(dbcsr_type), OPTIONAL                         :: matrix_M1, matrix_G
+      REAL(dp), INTENT(INOUT), OPTIONAL                  :: penalty
 
       CHARACTER(len=*), PARAMETER                        :: routineN = 'pao_calc_U_gth'
 
@@ -286,10 +328,10 @@ CONTAINS
          world_X(idx + 1:idx + nterms(iatom)) = block_X(:, 1)
       END DO
       CALL dbcsr_iterator_stop(iter)
-      CALL mp_sum(world_X, group) ! sync world view across MPI ranks
+      CALL group%sum(world_X) ! sync world view across MPI ranks
 
       ! loop over atoms
-      CALL dbcsr_iterator_start(iter, pao%matrix_U)
+      CALL dbcsr_iterator_start(iter, matrix_U)
       DO WHILE (dbcsr_iterator_blocks_left(iter))
          CALL dbcsr_iterator_next_block(iter, arow, acol, block_U)
          iatom = arow; CPASSERT(arow == acol)
@@ -327,7 +369,7 @@ CONTAINS
 
       ! distribute world_G across atomic blocks
       IF (PRESENT(matrix_G)) THEN
-         CALL mp_sum(world_G, group) ! sync world view across MPI ranks
+         CALL group%sum(world_G) ! sync world view across MPI ranks
          CALL dbcsr_iterator_start(iter, matrix_G)
          DO WHILE (dbcsr_iterator_blocks_left(iter))
             CALL dbcsr_iterator_next_block(iter, arow, acol, block_G)
@@ -342,10 +384,10 @@ CONTAINS
 
       ! sum penalty energies across ranks
       IF (PRESENT(penalty)) &
-         CALL mp_sum(penalty, group)
+         CALL group%sum(penalty)
 
       ! print homo-lumo gap encountered by fock-layer
-      CALL mp_min(gaps, group)
+      CALL group%min(gaps)
       IF (pao%iw_gap > 0) THEN
          DO iatom = 1, natoms
             WRITE (pao%iw_gap, *) "PAO| atom:", iatom, " fock gap:", gaps(iatom)

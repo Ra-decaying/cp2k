@@ -37,7 +37,6 @@ MODULE rpa_im_time_force_methods
    USE cp_fm_struct,                    ONLY: cp_fm_struct_type
    USE cp_fm_types,                     ONLY: cp_fm_create,&
                                               cp_fm_get_info,&
-                                              cp_fm_p_type,&
                                               cp_fm_release,&
                                               cp_fm_set_all,&
                                               cp_fm_type
@@ -86,10 +85,7 @@ MODULE rpa_im_time_force_methods
    USE machine,                         ONLY: m_flush,&
                                               m_walltime
    USE mathconstants,                   ONLY: fourpi
-   USE message_passing,                 ONLY: mp_cart_create,&
-                                              mp_comm_type,&
-                                              mp_sum,&
-                                              mp_sync
+   USE message_passing,                 ONLY: mp_cart_type
    USE mp2_eri,                         ONLY: integrate_set_2c
    USE mp2_eri_gpw,                     ONLY: calc_potential_gpw,&
                                               cleanup_gpw,&
@@ -136,8 +132,7 @@ MODULE rpa_im_time_force_methods
    USE qs_ks_methods,                   ONLY: calc_rho_tot_gspace
    USE qs_ks_reference,                 ONLY: ks_ref_potential
    USE qs_ks_types,                     ONLY: set_ks_env
-   USE qs_linres_types,                 ONLY: linres_control_create,&
-                                              linres_control_type
+   USE qs_linres_types,                 ONLY: linres_control_type
    USE qs_mo_types,                     ONLY: get_mo_set,&
                                               mo_set_type
    USE qs_neighbor_list_types,          ONLY: neighbor_list_set_p_type,&
@@ -233,7 +228,7 @@ CONTAINS
          DIMENSION(:), TARGET                            :: basis_set_ao, basis_set_ri_aux
       TYPE(gto_basis_set_type), POINTER                  :: orb_basis, ri_basis
       TYPE(libint_potential_type)                        :: identity_pot
-      TYPE(mp_comm_type)                                 :: mp_comm_t3c
+      TYPE(mp_cart_type)                                 :: mp_comm_t3c
       TYPE(neighbor_list_3c_type)                        :: nl_3c
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: nl_2c
@@ -296,7 +291,7 @@ CONTAINS
       CALL dbt_destroy(t_3c_template)
 
       CALL dbt_mp_environ_pgrid(pgrid_t3c, pdims, pcoord)
-      CALL mp_cart_create(pgrid_t3c%mp_comm_2d, 3, pdims, pcoord, mp_comm_t3c)
+      CALL mp_comm_t3c%create(pgrid_t3c%mp_comm_2d, 3, pdims, pcoord)
       CALL distribution_3d_create(dist_3d, dist_RI, dist_AO_1, dist_AO_2, &
                                   nkind, particle_set, mp_comm_t3c, own_comm=.TRUE.)
       DEALLOCATE (dist_RI, dist_AO_1, dist_AO_2)
@@ -364,7 +359,7 @@ CONTAINS
          CALL dbt_destroy(t_3c_der_AO_prv(1, 1, i_xyz))
       END DO
 
-      CALL mp_sum(memory, para_env%group)
+      CALL para_env%group%sum(memory)
       compression_factor = REAL(nze_tot, dp)*1.0E-06*8.0_dp/memory
       IF (unit_nr > 0) THEN
          WRITE (UNIT=unit_nr, FMT="((T3,A,T66,F11.2,A4))") &
@@ -712,7 +707,6 @@ CONTAINS
       CALL dbt_create(force_data%t_2c_K, t_2c_RI_2)
       CALL dbt_create(force_data%t_2c_der_ovlp(1), t_2c_AO)
 
-      ALLOCATE (atom_of_kind(natom), kind_of(natom))
       CALL get_atomic_kind_set(atomic_kind_set, kind_of=kind_of, atom_of_kind=atom_of_kind)
 
       ! Always do the batching of the MO on mu and sigma, such that it is consistent between
@@ -824,7 +818,7 @@ CONTAINS
          work_virial = 0.0_dp
          work_virial_ovlp = 0.0_dp
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%group%sync()
          t1 = m_walltime()
 
          !Deal with the force contributions where there is no explicit 3-center quantities, i.e. the
@@ -968,7 +962,7 @@ CONTAINS
          END IF
 
          !Print some info
-         CALL mp_sync(para_env%group)
+         CALL para_env%group%sync()
          t2 = m_walltime()
          dbcsr_time = dbcsr_time + t2 - t1
 
@@ -1214,7 +1208,6 @@ CONTAINS
       CALL dbt_create(force_data%t_2c_K, t_2c_RI_2)
       CALL dbt_create(force_data%t_2c_der_ovlp(1), t_2c_AO)
 
-      ALLOCATE (atom_of_kind(natom), kind_of(natom))
       CALL get_atomic_kind_set(atomic_kind_set, kind_of=kind_of, atom_of_kind=atom_of_kind)
 
       ! Always do the batching of the MO on mu and sigma, such that it is consistent between
@@ -1401,7 +1394,7 @@ CONTAINS
          work_virial = 0.0_dp
          work_virial_ovlp = 0.0_dp
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%group%sync()
          t1 = m_walltime()
 
          !Deal with the force contributions where there is no explicit 3-center quantities, i.e. the
@@ -1533,7 +1526,7 @@ CONTAINS
          END IF
 
          !Print some info
-         CALL mp_sync(para_env%group)
+         CALL para_env%group%sync()
          t2 = m_walltime()
          dbcsr_time = dbcsr_time + t2 - t1
 
@@ -2099,8 +2092,8 @@ CONTAINS
       LOGICAL                                            :: do_exx
       REAL(dp)                                           :: focc
       TYPE(admm_type), POINTER                           :: admm_env
-      TYPE(cp_fm_p_type), DIMENSION(:), POINTER          :: cpmos
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
+      TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:)        :: cpmos
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: dbcsr_p_work, matrix_p_mp2, &
                                                             matrix_p_mp2_admm, matrix_s, &
@@ -2111,7 +2104,7 @@ CONTAINS
       TYPE(qs_p_env_type), POINTER                       :: p_env
       TYPE(section_vals_type), POINTER                   :: hfx_section, lr_section
 
-      NULLIFY (linres_control, p_env, dft_control, matrix_s, mos, cpmos, mo_coeff, fm_struct, lr_section, &
+      NULLIFY (linres_control, p_env, dft_control, matrix_s, mos, mo_coeff, fm_struct, lr_section, &
                dbcsr_p_work, YP_admm, matrix_p_mp2, admm_env, work_admm, matrix_s_aux, matrix_p_mp2_admm)
 
       CALL timeset(routineN, handle)
@@ -2125,7 +2118,6 @@ CONTAINS
       lr_section => section_vals_get_subs_vals(qs_env%input, "DFT%XC%WF_CORRELATION%LOW_SCALING%CPHF")
 
       ALLOCATE (linres_control)
-      CALL linres_control_create(linres_control)
       CALL section_vals_val_get(lr_section, "MAX_ITER", i_val=linres_control%max_iter)
       CALL section_vals_val_get(lr_section, "EPS_CONV", r_val=linres_control%eps)
       CALL section_vals_val_get(lr_section, "PRECONDITIONER", i_val=linres_control%preconditioner_type)
@@ -2187,9 +2179,8 @@ CONTAINS
       DO ispin = 1, nspins
          CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff)
          CALL cp_fm_get_info(mo_coeff, matrix_struct=fm_struct)
-         ALLOCATE (cpmos(ispin)%matrix)
-         CALL cp_fm_create(cpmos(ispin)%matrix, fm_struct)
-         CALL cp_fm_set_all(cpmos(ispin)%matrix, 0.0_dp)
+         CALL cp_fm_create(cpmos(ispin), fm_struct)
+         CALL cp_fm_set_all(cpmos(ispin), 0.0_dp)
       END DO
 
       ! in case of EXX, need to add the HF Hamiltonian to the RHS of the Z-vector equation
@@ -2206,7 +2197,7 @@ CONTAINS
       DO ispin = 1, nspins
          CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff, homo=nocc)
          CALL cp_dbcsr_sm_fm_multiply(force_data%sum_O_tau(ispin)%matrix, mo_coeff, &
-                                      cpmos(ispin)%matrix, nocc, &
+                                      cpmos(ispin), nocc, &
                                       alpha=focc, beta=0.0_dp)
       END DO
 
@@ -2256,10 +2247,7 @@ CONTAINS
       IF (dft_control%do_admm) CALL dbcsr_deallocate_matrix_set(YP_admm)
 
       DO ispin = 1, nspins
-         IF (ASSOCIATED(cpmos(ispin)%matrix)) THEN
-            CALL cp_fm_release(cpmos(ispin)%matrix)
-            DEALLOCATE (cpmos(ispin)%matrix)
-         END IF
+         CALL cp_fm_release(cpmos(ispin))
       END DO
       DEALLOCATE (cpmos)
       CALL p_env_release(p_env)
@@ -2689,7 +2677,6 @@ CONTAINS
 
       ALLOCATE (wf_vector(n_RI))
 
-      ALLOCATE (atom_of_kind(natom), kind_of(natom))
       CALL get_atomic_kind_set(atomic_kind_set, kind_of=kind_of, atom_of_kind=atom_of_kind)
 
       ALLOCATE (iproc_map(natom))
@@ -2910,11 +2897,12 @@ CONTAINS
       CALL get_qs_env(qs_env, qs_kind_set=qs_kind_set, nkind=nkind, particle_set=particle_set, &
                       cell=cell, atomic_kind_set=atomic_kind_set, natom=natom, para_env=para_env)
 
-      ALLOCATE (atom_of_kind(natom), kind_of(natom))
       CALL get_atomic_kind_set(atomic_kind_set, kind_of=kind_of, atom_of_kind=atom_of_kind)
 
       ALLOCATE (basis_set_ri_aux(nkind))
       CALL basis_set_list_setup(basis_set_ri_aux, "RI_AUX", qs_kind_set)
+
+      G_count = 0; R_count = 0
 
       CALL dbcsr_iterator_start(iter, G_PQ)
       DO WHILE (dbcsr_iterator_blocks_left(iter))

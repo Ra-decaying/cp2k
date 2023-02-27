@@ -235,7 +235,7 @@ CONTAINS
       DO ispin = 1, nspin
          re = ispin*2 - 1
          im = ispin*2
-         IF (rtp_control%fixed_ions .AND. .NOT. rtp%do_hfx) THEN
+         IF (rtp_control%fixed_ions .AND. .NOT. rtp%propagate_complex_ks) THEN
             CALL arnoldi(mos_old(re:im), mos_new(re:im), &
                          eps_arnoldi, Him=propagator_matrix_fm(im), &
                          mos_next=mos_next(re:im), narn_old=rtp%narn_old)
@@ -296,7 +296,7 @@ CONTAINS
                CALL get_rtp(rtp=rtp, exp_H_old=exp_H_old, dt=dt)
                prefac = -0.5_dp*dt
                CALL dbcsr_scale(exp_H_old(im)%matrix, prefac)
-               IF (.NOT. rtp%do_hfx .AND. rtp_control%fixed_ions) THEN
+               IF (rtp_control%fixed_ions .AND. .NOT. rtp%propagate_complex_ks) THEN
                   CALL bch_expansion_imaginary_propagator( &
                      exp_H_old(im)%matrix, rho_next(re)%matrix, rho_next(im)%matrix, &
                      rtp%filter_eps, rtp%filter_eps_small, rtp_control%eps_exp)
@@ -310,7 +310,7 @@ CONTAINS
          END IF
          CALL dbcsr_copy(rho_new(re)%matrix, rho_next(re)%matrix)
          CALL dbcsr_copy(rho_new(im)%matrix, rho_next(im)%matrix)
-         IF (.NOT. rtp%do_hfx .AND. rtp_control%fixed_ions) THEN
+         IF (rtp_control%fixed_ions .AND. .NOT. rtp%propagate_complex_ks) THEN
             CALL bch_expansion_imaginary_propagator( &
                propagator_matrix(im)%matrix, rho_new(re)%matrix, rho_new(im)%matrix, &
                rtp%filter_eps, rtp%filter_eps_small, rtp_control%eps_exp)
@@ -363,7 +363,7 @@ CONTAINS
          SELECT CASE (rtp_control%mat_exp)
 
          CASE (do_taylor)
-            IF (rtp_control%fixed_ions .AND. .NOT. rtp%do_hfx) THEN
+            IF (rtp_control%fixed_ions .AND. .NOT. rtp%propagate_complex_ks) THEN
                CALL taylor_only_imaginary(propagator_fm(re:im), propagator_matrix_fm(im), &
                                           rtp%orders(1, ispin), rtp%orders(2, ispin))
             ELSE
@@ -371,7 +371,7 @@ CONTAINS
                                         rtp%orders(1, ispin), rtp%orders(2, ispin))
             END IF
          CASE (do_pade)
-            IF (rtp_control%fixed_ions .AND. .NOT. rtp%do_hfx) THEN
+            IF (rtp_control%fixed_ions .AND. .NOT. rtp%propagate_complex_ks) THEN
                CALL exp_pade_only_imaginary(propagator_fm(re:im), propagator_matrix_fm(im), &
                                             rtp%orders(1, ispin), rtp%orders(2, ispin))
             ELSE
@@ -413,7 +413,7 @@ CONTAINS
       DO ispin = 1, SIZE(propagator)/2
          re = 2*ispin - 1
          im = 2*ispin
-         IF (rtp_control%fixed_ions .AND. .NOT. rtp%do_hfx) THEN
+         IF (rtp_control%fixed_ions .AND. .NOT. rtp%propagate_complex_ks) THEN
             CALL taylor_only_imaginary_dbcsr(propagator(re:im), propagator_matrix(im)%matrix, &
                                              rtp%orders(1, ispin), rtp%orders(2, ispin), rtp%filter_eps)
          ELSE

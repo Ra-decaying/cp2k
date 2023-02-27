@@ -95,8 +95,7 @@ MODULE qs_scf
    USE machine,                         ONLY: m_flush,&
                                               m_walltime
    USE mathlib,                         ONLY: invert_matrix
-   USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_send
+   USE message_passing,                 ONLY: mp_comm_type
    USE particle_types,                  ONLY: particle_type
    USE preconditioner,                  ONLY: prepare_preconditioner,&
                                               restart_preconditioner
@@ -510,7 +509,7 @@ CONTAINS
 
             ! check for external communicator and if the intermediate energy should be sent
             IF (scf_energy_message_tag .GT. 0) THEN
-               CALL mp_send(energy%total, ext_master_id, scf_energy_message_tag, external_comm)
+               CALL external_comm%send(energy%total, ext_master_id, scf_energy_message_tag)
             END IF
 
             CALL qs_scf_check_inner_exit(qs_env, scf_env, scf_control, should_stop, exit_inner_loop, &
@@ -888,8 +887,7 @@ CONTAINS
       ! Release SCF work storage
       IF (ASSOCIATED(scf_env%scf_work1)) THEN
          DO ispin = 1, SIZE(scf_env%scf_work1)
-            CALL cp_fm_release(scf_env%scf_work1(ispin)%matrix)
-            DEALLOCATE (scf_env%scf_work1(ispin)%matrix)
+            CALL cp_fm_release(scf_env%scf_work1(ispin))
          END DO
          DEALLOCATE (scf_env%scf_work1)
       END IF
@@ -1112,12 +1110,11 @@ CONTAINS
          NULLIFY (cdft_control%mo_coeff)
          ALLOCATE (cdft_control%mo_coeff(dft_control%nspins))
          DO ispin = 1, dft_control%nspins
-            ALLOCATE (cdft_control%mo_coeff(ispin)%matrix)
-            CALL cp_fm_create(matrix=cdft_control%mo_coeff(ispin)%matrix, &
+            CALL cp_fm_create(matrix=cdft_control%mo_coeff(ispin), &
                               matrix_struct=qs_env%mos(ispin)%mo_coeff%matrix_struct, &
                               name="MO_COEFF_A"//TRIM(ADJUSTL(cp_to_string(ispin)))//"MATRIX")
             CALL cp_fm_to_fm(qs_env%mos(ispin)%mo_coeff, &
-                             cdft_control%mo_coeff(ispin)%matrix)
+                             cdft_control%mo_coeff(ispin))
          END DO
          ! Density matrix
          IF (cdft_control%calculate_metric) THEN

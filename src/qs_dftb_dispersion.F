@@ -22,7 +22,6 @@ MODULE qs_dftb_dispersion
                                               dispersion_d3bj,&
                                               dispersion_uff
    USE kinds,                           ONLY: dp
-   USE message_passing,                 ONLY: mp_sum
    USE particle_types,                  ONLY: particle_type
    USE qs_dftb_types,                   ONLY: qs_dftb_atom_type,&
                                               qs_dftb_pairpot_type
@@ -109,8 +108,8 @@ CONTAINS
       CHARACTER(LEN=*), PARAMETER :: routineN = 'calculate_dispersion_uff'
 
       INTEGER                                            :: atom_a, atom_b, handle, iatom, ikind, &
-                                                            jatom, jkind, natom, nkind
-      INTEGER, DIMENSION(:), POINTER                     :: atom_of_kind
+                                                            jatom, jkind, nkind
+      INTEGER, ALLOCATABLE, DIMENSION(:)                 :: atom_of_kind
       LOGICAL                                            :: use_virial
       LOGICAL, ALLOCATABLE, DIMENSION(:)                 :: define_kind
       REAL(dp), ALLOCATABLE, DIMENSION(:)                :: rc_kind
@@ -159,8 +158,6 @@ CONTAINS
             CALL get_qs_env(qs_env=qs_env, &
                             particle_set=particle_set, &
                             force=force)
-            natom = SIZE(particle_set)
-            ALLOCATE (atom_of_kind(natom))
             CALL get_atomic_kind_set(atomic_kind_set=atomic_kind_set, atom_of_kind=atom_of_kind)
             use_virial = virial%pv_availability .AND. (.NOT. virial%pv_numer)
          ELSE
@@ -177,8 +174,7 @@ CONTAINS
 
          IF (atprop%energy) THEN
             CALL get_qs_env(qs_env=qs_env, particle_set=particle_set)
-            natom = SIZE(particle_set)
-            CALL atprop_array_init(atprop%atevdw, natom)
+            CALL atprop_array_init(atprop%atevdw, natom=SIZE(particle_set))
          END IF
 
          CALL get_qs_env(qs_env=qs_env, sab_vdw=sab_vdw)
@@ -251,12 +247,8 @@ CONTAINS
          END DO
          CALL neighbor_list_iterator_release(nl_iterator)
 
-         IF (calculate_forces) THEN
-            DEALLOCATE (atom_of_kind)
-         END IF
-
          ! set dispersion energy
-         CALL mp_sum(evdw, para_env%group)
+         CALL para_env%group%sum(evdw)
          energy%dispersion = evdw
 
       END IF

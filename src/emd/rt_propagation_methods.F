@@ -18,7 +18,8 @@ MODULE rt_propagation_methods
    USE cp_cfm_types,                    ONLY: cp_cfm_create,&
                                               cp_cfm_release,&
                                               cp_cfm_type
-   USE cp_control_types,                ONLY: rtp_control_type
+   USE cp_control_types,                ONLY: dft_control_type,&
+                                              rtp_control_type
    USE cp_dbcsr_cholesky,               ONLY: cp_dbcsr_cholesky_decompose,&
                                               cp_dbcsr_cholesky_invert
    USE cp_dbcsr_operations,             ONLY: cp_dbcsr_sm_fm_multiply,&
@@ -45,6 +46,7 @@ MODULE rt_propagation_methods
         dbcsr_iterator_blocks_left, dbcsr_iterator_next_block, dbcsr_iterator_start, &
         dbcsr_iterator_stop, dbcsr_iterator_type, dbcsr_multiply, dbcsr_p_type, dbcsr_release, &
         dbcsr_scale, dbcsr_set, dbcsr_transposed, dbcsr_type, dbcsr_type_antisymmetric
+   USE efield_utils,                    ONLY: efield_potential_lengh_gauge
    USE input_constants,                 ONLY: do_arnoldi,&
                                               do_bch,&
                                               do_em,&
@@ -73,7 +75,8 @@ MODULE rt_propagation_methods
    USE rt_propagation_utils,            ONLY: calc_S_derivs,&
                                               calc_update_rho,&
                                               calc_update_rho_sparse
-   USE rt_propagation_velocity_gauge,   ONLY: velocity_gauge_ks_matrix
+   USE rt_propagation_velocity_gauge,   ONLY: update_vector_potential,&
+                                              velocity_gauge_ks_matrix
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -112,6 +115,7 @@ CONTAINS
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: delta_P, H_last_iter, ks_mix, ks_mix_im, &
                                                             matrix_ks, matrix_ks_im, matrix_s, &
                                                             rho_new
+      TYPE(dft_control_type), POINTER                    :: dft_control
 
       CALL timeset(routineN, handle)
 
@@ -125,15 +129,21 @@ CONTAINS
       NULLIFY (delta_P, rho_new, delta_mos, mos_new)
       NULLIFY (ks_mix, ks_mix_im)
       ! get everything needed and set some values
-      CALL get_qs_env(qs_env, matrix_s=matrix_s)
+      CALL get_qs_env(qs_env, matrix_s=matrix_s, dft_control=dft_control)
+
       IF (rtp%iter == 1) THEN
          CALL qs_energies_init(qs_env, .FALSE.)
          !the above recalculates matrix_s, but matrix not changed if ions are fixed
          IF (rtp_control%fixed_ions) CALL set_ks_env(qs_env%ks_env, s_mstruct_changed=.FALSE.)
 
-         ! add additional terms for the velocity gauge to matrix_h and matrix_h_im
+         ! add additional terms to matrix_h and matrix_h_im in the case of applied electric field,
+         ! either in the lengh or velocity gauge.
          ! should be called imediately after qs_energies_init and before qs_ks_update_qs_env
+         IF (dft_control%apply_efield_field) &
+            CALL efield_potential_lengh_gauge(qs_env)
          IF (rtp_control%velocity_gauge) THEN
+            IF (dft_control%apply_vector_potential) &
+               CALL update_vector_potential(qs_env, dft_control)
             CALL velocity_gauge_ks_matrix(qs_env, subtract_nl_term=.FALSE.)
          END IF
 
@@ -202,7 +212,7 @@ CONTAINS
             im = 2*i
             CALL dbcsr_add(ks_mix(i)%matrix, matrix_ks(i)%matrix, 0.0_dp, rtp%mixing_factor)
             CALL dbcsr_add(ks_mix(i)%matrix, H_last_iter(re)%matrix, 1.0_dp, 1.0_dp - rtp%mixing_factor)
-            IF (rtp%do_hfx) THEN
+            IF (rtp%propagate_complex_ks) THEN
                CALL dbcsr_add(ks_mix_im(i)%matrix, matrix_ks_im(i)%matrix, 0.0_dp, rtp%mixing_factor)
                CALL dbcsr_add(ks_mix_im(i)%matrix, H_last_iter(im)%matrix, 1.0_dp, 1.0_dp - rtp%mixing_factor)
             END IF
@@ -212,7 +222,7 @@ CONTAINS
             re = 2*i - 1
             im = 2*i
             CALL dbcsr_copy(H_last_iter(re)%matrix, ks_mix(i)%matrix)
-            IF (rtp%do_hfx) THEN
+            IF (rtp%propagate_complex_ks) THEN
                CALL dbcsr_copy(H_last_iter(im)%matrix, ks_mix_im(i)%matrix)
             END IF
          END DO
@@ -224,7 +234,7 @@ CONTAINS
             re = 2*i - 1
             im = 2*i
             CALL dbcsr_copy(H_last_iter(re)%matrix, matrix_ks(i)%matrix)
-            IF (rtp%do_hfx) THEN
+            IF (rtp%propagate_complex_ks) THEN
                CALL dbcsr_copy(H_last_iter(im)%matrix, matrix_ks_im(i)%matrix)
             END IF
          END DO
@@ -288,7 +298,8 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
-      CALL get_qs_env(qs_env=qs_env, rtp=rtp, matrix_s=s_mat, matrix_ks=matrix_ks, matrix_ks_im=matrix_ks_im, energy=energy)
+      CALL get_qs_env(qs_env=qs_env, rtp=rtp, matrix_s=s_mat, &
+                      matrix_ks=matrix_ks, matrix_ks_im=matrix_ks_im, energy=energy)
       CALL get_rtp(rtp=rtp, exp_H_old=exp_H_old, exp_H_new=exp_H_new)
 
       IF (rtp_control%sc_check_start .LT. rtp%iter) THEN
@@ -415,9 +426,11 @@ CONTAINS
             CALL dbcsr_copy(SinvH(ispin)%matrix, exp_H(im)%matrix)
          END IF
       END DO
-      IF (.NOT. rtp_control%fixed_ions .OR. rtp%do_hfx) THEN
+
+      ! in these two cases the argument in the matrix exponentials has a real part
+      IF (.NOT. rtp_control%fixed_ions .OR. rtp%propagate_complex_ks) THEN
          CALL get_rtp(rtp=rtp, B_mat=B_mat, SinvB=SinvB)
-         IF (rtp%do_hfx) THEN
+         IF (rtp%propagate_complex_ks) THEN
             DO ispin = 1, SIZE(matrix_ks)
                re = ispin*2 - 1
                im = ispin*2
@@ -425,8 +438,9 @@ CONTAINS
                CALL dbcsr_desymmetrize(matrix_ks_im(ispin)%matrix, matrix_ks_nosym)
 
                ! take care of the EMD case and add the velocity scaled S_derivative
-               IF (.NOT. rtp_control%fixed_ions) &
+               IF (.NOT. rtp_control%fixed_ions) THEN
                   CALL dbcsr_add(matrix_ks_nosym, B_mat, 1.0_dp, -1.0_dp)
+               END IF
 
                CALL dbcsr_multiply("N", "N", -one, S_inv, matrix_ks_nosym, zero, exp_H(re)%matrix, &
                                    filter_eps=rtp%filter_eps)
@@ -437,7 +451,7 @@ CONTAINS
          ELSE
             ! in case of pure EMD its only needed once as B is the same for both spins
             CALL dbcsr_multiply("N", "N", one, S_inv, B_mat, zero, exp_H(1)%matrix, filter_eps=rtp%filter_eps)
-
+            CALL get_rtp(rtp=rtp, B_mat=B_mat, SinvB=SinvB)
             CALL dbcsr_copy(SinvB(1)%matrix, exp_H(1)%matrix)
 
             IF (SIZE(matrix_ks) == 2) CALL dbcsr_copy(exp_H(3)%matrix, exp_H(1)%matrix)

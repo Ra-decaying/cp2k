@@ -226,6 +226,12 @@ MODULE input_constants
                                                do_gapw_gct = 2, &
                                                do_gapw_log = 3
 
+   INTEGER, PARAMETER, PUBLIC               :: gapw_1c_orb = 1000, &
+                                               gapw_1c_small = 1002, &
+                                               gapw_1c_medium = 1003, &
+                                               gapw_1c_large = 1004, &
+                                               gapw_1c_very_large = 1005
+
    INTEGER, PARAMETER, PUBLIC               :: do_pwgrid_spherical = 1, &
                                                do_pwgrid_ns_fullspace = 2, &
                                                do_pwgrid_ns_halfspace = 3
@@ -555,6 +561,10 @@ MODULE input_constants
                                                xc_funct_b3lyp = 10, &
                                                xc_funct_pbe0 = 11, &
                                                xc_funct_beefvdw = 12
+   INTEGER, PARAMETER, PUBLIC               :: fxc_none = 0, &
+                                               fxc_funct_pade = 1, &
+                                               fxc_funct_lda = 2, &
+                                               fxc_funct_gga = 3
    INTEGER, PARAMETER, PUBLIC               :: sic_none = 0, &
                                                sic_mauri_us = 1, &
                                                sic_mauri_spz = 2, &

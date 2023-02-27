@@ -21,7 +21,6 @@ MODULE qs_tddfpt2_methods
    USE cp_fm_struct,                    ONLY: cp_fm_struct_type
    USE cp_fm_types,                     ONLY: cp_fm_create,&
                                               cp_fm_get_info,&
-                                              cp_fm_p_type,&
                                               cp_fm_release,&
                                               cp_fm_to_fm,&
                                               cp_fm_type
@@ -59,7 +58,8 @@ MODULE qs_tddfpt2_methods
    USE qs_2nd_kernel_ao,                ONLY: build_dm_response
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
-   USE qs_kernel_methods,               ONLY: create_kernel_env
+   USE qs_kernel_methods,               ONLY: create_fxc_kernel,&
+                                              create_kernel_env
    USE qs_kernel_types,                 ONLY: full_kernel_env_type,&
                                               kernel_env_type,&
                                               release_kernel_env
@@ -149,8 +149,9 @@ CONTAINS
       TYPE(admm_type), POINTER                           :: admm_env
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
-      TYPE(cp_fm_p_type), ALLOCATABLE, DIMENSION(:, :)   :: dipole_op_mos_occ, evects, S_evects
       TYPE(cp_fm_struct_type), POINTER                   :: matrix_struct
+      TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:)        :: my_mos
+      TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:, :)     :: dipole_op_mos_occ, evects, S_evects
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_ks, matrix_ks_oep, matrix_s
       TYPE(dft_control_type), POINTER                    :: dft_control
@@ -232,12 +233,12 @@ CONTAINS
       END IF
 
       ! split mpi communicator
-      ALLOCATE (evects(nspins, 1))
+      ALLOCATE (my_mos(nspins))
       DO ispin = 1, nspins
-         evects(ispin, 1)%matrix => gs_mos(ispin)%mos_occ
+         my_mos(ispin) = gs_mos(ispin)%mos_occ
       END DO
-      CALL tddfpt_sub_env_init(sub_env, qs_env, mos_occ=evects(:, 1), kernel=tddfpt_control%kernel)
-      DEALLOCATE (evects)
+      CALL tddfpt_sub_env_init(sub_env, qs_env, mos_occ=my_mos(:), kernel=tddfpt_control%kernel)
+      DEALLOCATE (my_mos)
 
       IF (tddfpt_control%kernel == tddfpt_kernel_full) THEN
          ! create environment for Full Kernel
@@ -247,7 +248,8 @@ CONTAINS
 
          ! allocate pools and work matrices
          nstates = tddfpt_control%nstates
-         CALL tddfpt_create_work_matrices(work_matrices, gs_mos, nstates, do_hfx, do_admm, qs_env, sub_env)
+         CALL tddfpt_create_work_matrices(work_matrices, gs_mos, nstates, do_hfx, do_admm, do_exck, &
+                                          qs_env, sub_env)
 
          CALL tddfpt_construct_ground_state_orb_density(rho_orb_struct=work_matrices%rho_orb_struct_sub, &
                                                         rho_xc_struct=work_matrices%rho_xc_struct_sub, &
@@ -294,6 +296,13 @@ CONTAINS
             kernel_env%full_kernel => full_kernel_env
             NULLIFY (kernel_env%admm_kernel)
          END IF
+         ! Fxc from kernel definition
+         kernel_env%full_kernel%do_exck = do_exck
+         ! initilize xc kernel
+         IF (do_exck) THEN
+            CALL create_fxc_kernel(work_matrices%rho_orb_struct_sub, work_matrices%fxc_rspace_sub, &
+                                   xc_section, tddfpt_control%rks_triplets, sub_env, qs_env)
+         END IF
       ELSE IF (tddfpt_control%kernel == tddfpt_kernel_stda) THEN
          ! sTDA kernel
          nactive = 0
@@ -332,9 +341,7 @@ CONTAINS
       ALLOCATE (evects(nspins, nstates), S_evects(nspins, nstates))
       DO istate = 1, nstates
          DO ispin = 1, nspins
-            NULLIFY (evects(ispin, istate)%matrix, S_evects(ispin, istate)%matrix)
-            ALLOCATE (S_evects(ispin, istate)%matrix)
-            CALL fm_pool_create_fm(work_matrices%fm_pool_ao_mo_occ(ispin)%pool, S_evects(ispin, istate)%matrix)
+            CALL fm_pool_create_fm(work_matrices%fm_pool_ao_mo_occ(ispin)%pool, S_evects(ispin, istate))
          END DO
       END DO
 
@@ -505,17 +512,15 @@ CONTAINS
          ! excitation vector
          IF (ASSOCIATED(ex_env%evect)) THEN
             DO ispin = 1, SIZE(ex_env%evect)
-               CALL cp_fm_release(ex_env%evect(ispin)%matrix)
-               DEALLOCATE (ex_env%evect(ispin)%matrix)
+               CALL cp_fm_release(ex_env%evect(ispin))
             END DO
             DEALLOCATE (ex_env%evect)
          END IF
          ALLOCATE (ex_env%evect(nspins))
          DO ispin = 1, nspins
-            CALL cp_fm_get_info(matrix=evects(ispin, 1)%matrix, matrix_struct=matrix_struct)
-            ALLOCATE (ex_env%evect(ispin)%matrix)
-            CALL cp_fm_create(ex_env%evect(ispin)%matrix, matrix_struct)
-            CALL cp_fm_to_fm(evects(ispin, my_state)%matrix, ex_env%evect(ispin)%matrix)
+            CALL cp_fm_get_info(matrix=evects(ispin, 1), matrix_struct=matrix_struct)
+            CALL cp_fm_create(ex_env%evect(ispin), matrix_struct)
+            CALL cp_fm_to_fm(evects(ispin, my_state), ex_env%evect(ispin))
          END DO
 
          IF (log_unit > 0) THEN
@@ -535,9 +540,8 @@ CONTAINS
       ! clean up
       DO istate = 1, SIZE(evects, 2)
          DO ispin = 1, nspins
-            CALL cp_fm_release(evects(ispin, istate)%matrix)
-            CALL cp_fm_release(S_evects(ispin, istate)%matrix)
-            DEALLOCATE (evects(ispin, istate)%matrix, S_evects(ispin, istate)%matrix)
+            CALL cp_fm_release(evects(ispin, istate))
+            CALL cp_fm_release(S_evects(ispin, istate))
          END DO
       END DO
       DEALLOCATE (evects, S_evects, evals, ostrength)
@@ -564,8 +568,7 @@ CONTAINS
       IF (ALLOCATED(dipole_op_mos_occ)) THEN
          DO ispin = nspins, 1, -1
             DO istate = SIZE(dipole_op_mos_occ, 1), 1, -1
-               CALL cp_fm_release(dipole_op_mos_occ(istate, ispin)%matrix)
-               DEALLOCATE (dipole_op_mos_occ(istate, ispin)%matrix)
+               CALL cp_fm_release(dipole_op_mos_occ(istate, ispin))
             END DO
          END DO
          DEALLOCATE (dipole_op_mos_occ)
@@ -721,12 +724,12 @@ CONTAINS
                              "the one used for the ground-state calculation. A ground-state 'admm_env' cannot be reused.")
             END IF
             ! SET HFX_KERNEL and/or XC_KERNEL
-            IF (exhfxk) THEN
+            IF (exk) THEN
                do_exck = .TRUE.
             ELSE
                do_exck = .FALSE.
             END IF
-            IF (exk) THEN
+            IF (exhfxk) THEN
                do_hfxlr = .TRUE.
             ELSE
                do_hfxlr = .FALSE.
@@ -858,7 +861,7 @@ CONTAINS
    SUBROUTINE assign_state(qs_env, matrix_s, evects, mos, fingerprint, my_state)
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s
-      TYPE(cp_fm_p_type), DIMENSION(:, :)                :: evects
+      TYPE(cp_fm_type), DIMENSION(:, :)                  :: evects
       TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: fingerprint
       INTEGER, INTENT(INOUT)                             :: my_state
@@ -870,7 +873,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)           :: dv
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: chr
       REAL(KIND=dp), DIMENSION(:, :, :), POINTER         :: charges
-      TYPE(cp_fm_p_type), DIMENSION(:), POINTER          :: psi0
+      TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:)        :: psi0
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
       TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_p1
@@ -891,7 +894,7 @@ CONTAINS
       ALLOCATE (psi0(nspins))
       DO ispin = 1, nspins
          CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff)
-         psi0(ispin)%matrix => mo_coeff
+         psi0(ispin) = mo_coeff
       END DO
       !
       IF (ASSOCIATED(fingerprint)) THEN

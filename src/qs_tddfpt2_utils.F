@@ -24,7 +24,6 @@ MODULE qs_tddfpt2_utils
                                               cp_fm_struct_type
    USE cp_fm_types,                     ONLY: cp_fm_create,&
                                               cp_fm_get_info,&
-                                              cp_fm_p_type,&
                                               cp_fm_release,&
                                               cp_fm_set_all,&
                                               cp_fm_to_fm,&
@@ -53,8 +52,6 @@ MODULE qs_tddfpt2_utils
                                               section_vals_val_get
    USE kinds,                           ONLY: dp,&
                                               int_8
-   USE message_passing,                 ONLY: mp_min,&
-                                              mp_sum
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE physcon,                         ONLY: evolt
    USE qs_environment_types,            ONLY: get_qs_env,&
@@ -116,7 +113,8 @@ CONTAINS
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_1d_r_p_type), DIMENSION(:), POINTER        :: evals_virt
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
-      TYPE(cp_fm_p_type), DIMENSION(:), POINTER          :: mos_virt
+      TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:), &
+         TARGET                                          :: mos_virt
       TYPE(cp_fm_type), POINTER                          :: mos_virt_spin
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_ks, matrix_s
       TYPE(dft_control_type), POINTER                    :: dft_control
@@ -143,7 +141,7 @@ CONTAINS
       ! when the number of unoccupied orbitals is limited and OT has been used
       ! for the ground-state DFT calculation,
       ! compute the missing unoccupied orbitals using OT as well.
-      NULLIFY (evals_virt, evals_virt_spin, mos_virt, mos_virt_spin)
+      NULLIFY (evals_virt, evals_virt_spin, mos_virt_spin)
       IF (ASSOCIATED(scf_env)) THEN
          IF ((scf_env%method == ot_method_nr .AND. tddfpt_control%nlumo > 0) .OR. &
              (scf_env%method == ot_method_nr .AND. print_virtuals_newtonx)) THEN
@@ -173,8 +171,8 @@ CONTAINS
          ELSE
             NULLIFY (evals_virt_spin)
          END IF
-         IF (ASSOCIATED(mos_virt)) THEN
-            mos_virt_spin => mos_virt(ispin)%matrix
+         IF (ALLOCATED(mos_virt)) THEN
+            mos_virt_spin => mos_virt(ispin)
          ELSE
             NULLIFY (mos_virt_spin)
          END IF
@@ -208,12 +206,9 @@ CONTAINS
          DEALLOCATE (evals_virt)
       END IF
 
-      IF (ASSOCIATED(mos_virt)) THEN
+      IF (ALLOCATED(mos_virt)) THEN
          DO ispin = 1, SIZE(mos_virt)
-            IF (ASSOCIATED(mos_virt(ispin)%matrix)) THEN
-               CALL cp_fm_release(mos_virt(ispin)%matrix)
-               DEALLOCATE (mos_virt(ispin)%matrix)
-            END IF
+            CALL cp_fm_release(mos_virt(ispin))
          END DO
          DEALLOCATE (mos_virt)
       END IF
@@ -428,9 +423,9 @@ CONTAINS
          END DO
       END DO
 
-      CALL mp_sum(sum_sign_array, para_env%group)
-      CALL mp_min(minrow_neg_array, para_env%group)
-      CALL mp_min(minrow_pos_array, para_env%group)
+      CALL para_env%group%sum(sum_sign_array)
+      CALL para_env%group%min(minrow_neg_array)
+      CALL para_env%group%min(minrow_pos_array)
 
       DO icol_local = 1, nmo_occ
          IF (sum_sign_array(icol_local) > 0) THEN
@@ -510,9 +505,9 @@ CONTAINS
             END DO
          END DO
 
-         CALL mp_sum(sum_sign_array, para_env%group)
-         CALL mp_min(minrow_neg_array, para_env%group)
-         CALL mp_min(minrow_pos_array, para_env%group)
+         CALL para_env%group%sum(sum_sign_array)
+         CALL para_env%group%min(minrow_neg_array)
+         CALL para_env%group%min(minrow_pos_array)
          DO icol_local = 1, nmo_virt
             IF (sum_sign_array(icol_local) > 0) THEN
                ! most of the expansion coefficients are positive => MO's phase = +1
@@ -939,7 +934,7 @@ CONTAINS
 !>       \endparblock
 ! **************************************************************************************************
    SUBROUTINE tddfpt_guess_vectors(evects, evals, gs_mos, log_unit)
-      TYPE(cp_fm_p_type), DIMENSION(:, :), INTENT(inout) :: evects
+      TYPE(cp_fm_type), DIMENSION(:, :), INTENT(inout)   :: evects
       REAL(kind=dp), DIMENSION(:), INTENT(inout)         :: evals
       TYPE(tddfpt_ground_state_mos), DIMENSION(:), &
          INTENT(in)                                      :: gs_mos
@@ -1024,7 +1019,7 @@ CONTAINS
       END IF
 
       DO istate = 1, nstates
-         IF (ASSOCIATED(evects(1, istate)%matrix)) THEN
+         IF (ASSOCIATED(evects(1, istate)%matrix_struct)) THEN
             IF (log_unit > 0) &
                WRITE (log_unit, '(T7,I8,T28,A19,T60,F14.5)') &
                istate, "***  restarted  ***", evals(istate)*evolt
@@ -1050,13 +1045,12 @@ CONTAINS
                istate, imo_occ, spin_label, nmo_occ_avail(ispin) + imo_virt, spin_label, e_virt_minus_occ(istate)*evolt
 
             DO jspin = 1, nspins
-               ! .NOT. ASSOCIATED(evects(jspin, istate)%matrix))
-               ALLOCATE (evects(jspin, istate)%matrix)
-               CALL cp_fm_create(evects(jspin, istate)%matrix, fm_struct_evects(jspin)%struct)
-               CALL cp_fm_set_all(evects(jspin, istate)%matrix, 0.0_dp)
+               ! .NOT. ASSOCIATED(evects(jspin, istate)%matrix_struct))
+               CALL cp_fm_create(evects(jspin, istate), fm_struct_evects(jspin)%struct)
+               CALL cp_fm_set_all(evects(jspin, istate), 0.0_dp)
 
                IF (jspin == ispin) &
-                  CALL cp_fm_to_fm(gs_mos(ispin)%mos_virt, evects(ispin, istate)%matrix, &
+                  CALL cp_fm_to_fm(gs_mos(ispin)%mos_virt, evects(ispin, istate), &
                                    ncol=1, source_start=imo_virt, target_start=imo_occ)
             END DO
          END IF

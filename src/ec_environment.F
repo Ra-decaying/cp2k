@@ -141,7 +141,6 @@ CONTAINS
       NULLIFY (ec_env%force)
       NULLIFY (ec_env%dispersion_env)
       NULLIFY (ec_env%xc_section)
-      NULLIFY (ec_env%cpmos)
       NULLIFY (ec_env%matrix_z)
       NULLIFY (ec_env%matrix_hz)
       NULLIFY (ec_env%matrix_wz)
@@ -190,6 +189,11 @@ CONTAINS
          ! Skip EC calculation if ground-state calculation did not converge
          CALL section_vals_val_get(ec_section, "SKIP_EC", &
                                    l_val=ec_env%skip_ec)
+         ! Debug output
+         CALL section_vals_val_get(ec_section, "DEBUG_FORCES", &
+                                   l_val=ec_env%debug_forces)
+         CALL section_vals_val_get(ec_section, "DEBUG_STRESS", &
+                                   l_val=ec_env%debug_stress)
 
          ec_env%do_skip = .FALSE.
 

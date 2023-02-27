@@ -21,9 +21,7 @@ MODULE qs_atomic_block
         dbcsr_iterator_next_block, dbcsr_iterator_start, dbcsr_iterator_stop, dbcsr_iterator_type, &
         dbcsr_p_type, dbcsr_scale, dbcsr_set, dbcsr_type
    USE kinds,                           ONLY: dp
-   USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_sum
-   USE particle_types,                  ONLY: particle_type
+   USE message_passing,                 ONLY: mp_comm_type
    USE qs_kind_types,                   ONLY: qs_kind_type
 #include "./base/base_uses.f90"
 
@@ -45,7 +43,6 @@ CONTAINS
 !> \brief returns a block diagonal density matrix. Blocks correspond to the atomic densities.
 !> \param pmatrix ...
 !> \param matrix_s ...
-!> \param particle_set ...
 !> \param atomic_kind_set ...
 !> \param qs_kind_set ...
 !> \param nspin ...
@@ -53,11 +50,10 @@ CONTAINS
 !> \param ounit ...
 !> \param para_env ...
 ! **************************************************************************************************
-   SUBROUTINE calculate_atomic_block_dm(pmatrix, matrix_s, particle_set, atomic_kind_set, &
+   SUBROUTINE calculate_atomic_block_dm(pmatrix, matrix_s, atomic_kind_set, &
                                         qs_kind_set, nspin, nelectron_spin, ounit, para_env)
       TYPE(dbcsr_p_type), DIMENSION(:), INTENT(INOUT)    :: pmatrix
       TYPE(dbcsr_type), INTENT(INOUT)                    :: matrix_s
-      TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       INTEGER, INTENT(IN)                                :: nspin
@@ -68,7 +64,7 @@ CONTAINS
       CHARACTER(LEN=*), PARAMETER :: routineN = 'calculate_atomic_block_dm'
 
       INTEGER                                            :: blk, handle, icol, ikind, irow, ispin, &
-                                                            natom, nc, nkind, nocc(2)
+                                                            nc, nkind, nocc(2)
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: kind_of
       INTEGER, ALLOCATABLE, DIMENSION(:, :)              :: nok
       REAL(dp), DIMENSION(:, :), POINTER                 :: pdata
@@ -82,9 +78,7 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
-      natom = SIZE(particle_set)
       nkind = SIZE(atomic_kind_set)
-      ALLOCATE (kind_of(natom))
       CALL get_atomic_kind_set(atomic_kind_set=atomic_kind_set, kind_of=kind_of)
       ALLOCATE (pmat(nkind))
       ALLOCATE (nok(2, nkind))
@@ -154,7 +148,7 @@ CONTAINS
 
          IF (nspin > 1) THEN
             group = para_env%group
-            CALL mp_sum(nocc, group)
+            CALL group%sum(nocc)
             IF (nelectron_spin(ispin) > nocc(ispin)) THEN
                rds = 0.99_dp
                CALL dbcsr_scale(matrix_p, rds)

@@ -45,8 +45,7 @@ MODULE rpa_im_time
    USE machine,                         ONLY: m_flush,&
                                               m_walltime
    USE mathconstants,                   ONLY: twopi
-   USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_sync
+   USE message_passing,                 ONLY: mp_cart_type
    USE mp2_types,                       ONLY: mp2_type
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE particle_types,                  ONLY: particle_type
@@ -167,7 +166,7 @@ CONTAINS
       TYPE(cp_para_env_type), INTENT(IN)                 :: para_env
       TYPE(qs_environment_type), POINTER                 :: qs_env
       LOGICAL, INTENT(IN)                                :: do_kpoints_from_Gamma
-      INTEGER, DIMENSION(:, :), INTENT(IN)               :: index_to_cell_3c
+      INTEGER, ALLOCATABLE, DIMENSION(:, :), INTENT(IN)  :: index_to_cell_3c
       INTEGER, ALLOCATABLE, DIMENSION(:, :, :), &
          INTENT(IN)                                      :: cell_to_index_3c
       LOGICAL, DIMENSION(:, :, :, :, :), INTENT(INOUT)   :: has_mat_P_blocks
@@ -205,7 +204,7 @@ CONTAINS
       TYPE(dbt_type), ALLOCATABLE, DIMENSION(:)          :: t_dm_occ, t_dm_virt
       TYPE(dbt_type), &
          DIMENSION(SIZE(t_3c_O, 1), SIZE(t_3c_O, 2))     :: t_3c_O_occ, t_3c_O_virt
-      TYPE(mp_comm_type)                                 :: comm_2d
+      TYPE(mp_cart_type)                                 :: comm_2d
 
       CALL timeset(routineN, handle)
 
@@ -237,7 +236,7 @@ CONTAINS
 
       DO jquad = 1, num_integ_points
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%group%sync()
          t1 = m_walltime()
 
          CALL compute_mat_dm_global(fm_scaled_dm_occ_tau, fm_scaled_dm_virt_tau, tau_tj, num_integ_points, nmo, &
@@ -292,7 +291,7 @@ CONTAINS
 
          CALL timeset(routineN//"_contract", handle2)
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%group%sync()
          t1_flop = m_walltime()
 
          DO i = 1, SIZE(t_3c_O_occ, 1)
@@ -565,7 +564,7 @@ CONTAINS
          DEALLOCATE (t_dm_virt)
          DEALLOCATE (t_dm_occ)
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%group%sync()
          t2 = m_walltime()
 
          dbcsr_time = dbcsr_time + t2 - t1_flop
@@ -731,7 +730,7 @@ CONTAINS
 
          num_cells_dm = 1
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%group%sync()
 
          ! get info of fm_mo_coeff_occ
          CALL cp_fm_get_info(matrix=fm_mo_coeff_occ, &
@@ -783,7 +782,7 @@ CONTAINS
             END DO
          END DO
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%group%sync()
 
          size_dm_occ = nmo
          size_dm_virt = nmo
@@ -917,8 +916,8 @@ CONTAINS
          DO ispin = 1, nspin
             mo_set => kp%mos(1, ispin)
             CALL get_mo_set(mo_set, eigenvalues=eigenvalues)
-            rpmat => kp%wmat(1, ispin)%matrix
-            cpmat => kp%wmat(2, ispin)%matrix
+            rpmat => kp%wmat(1, ispin)
+            cpmat => kp%wmat(2, ispin)
             CALL get_mo_set(mo_set, occupation_numbers=occupation)
             CALL cp_fm_to_fm(mo_set%mo_coeff, fwork)
 
@@ -1242,7 +1241,7 @@ CONTAINS
 
       NULLIFY (xkp, wkp)
 
-      CALL cp_fm_create(fm_mat_work, kpoints_G%kp_env(1)%kpoint_env%wmat(1, 1)%matrix%matrix_struct)
+      CALL cp_fm_create(fm_mat_work, kpoints_G%kp_env(1)%kpoint_env%wmat(1, 1)%matrix_struct)
       CALL cp_fm_set_all(fm_mat_work, 0.0_dp)
 
       CALL get_kpoint_info(kpoints_G, nkp=nkp, xkp=xkp, wkp=wkp)
@@ -1258,7 +1257,7 @@ CONTAINS
 
       CALL get_atom_index_from_basis_function_index(qs_env, atom_from_ao_index, nao, "ORB")
 
-      CALL cp_fm_get_info(matrix=kpoints_G%kp_env(1)%kpoint_env%wmat(1, 1)%matrix, &
+      CALL cp_fm_get_info(matrix=kpoints_G%kp_env(1)%kpoint_env%wmat(1, 1), &
                           nrow_local=nrow_local, &
                           ncol_local=ncol_local, &
                           row_indices=row_indices, &
@@ -1278,8 +1277,8 @@ CONTAINS
          DO ik = 1, nkp
 
             kp => kpoints_G%kp_env(ik)%kpoint_env
-            rpmat => kp%wmat(1, ispin)%matrix
-            cpmat => kp%wmat(2, ispin)%matrix
+            rpmat => kp%wmat(1, ispin)
+            cpmat => kp%wmat(2, ispin)
 
             DO irow = 1, nrow_local
                DO jcol = 1, ncol_local
@@ -1381,8 +1380,8 @@ CONTAINS
          DO ik = 1, nkp
 
             kp => kpoints%kp_env(ik)%kpoint_env
-            rpmat => kp%wmat(1, ispin)%matrix
-            cpmat => kp%wmat(2, ispin)%matrix
+            rpmat => kp%wmat(1, ispin)
+            cpmat => kp%wmat(2, ispin)
 
             CALL copy_fm_to_dbcsr(rpmat, mat_work_re, keep_sparsity=.FALSE.)
             CALL copy_fm_to_dbcsr(cpmat, mat_work_im, keep_sparsity=.FALSE.)
@@ -1550,10 +1549,10 @@ CONTAINS
 
       INTEGER, INTENT(IN)                                :: i_cell_R, i_cell_S
       INTEGER, INTENT(OUT)                               :: i_cell_R_minus_S
-      INTEGER, DIMENSION(:, :), INTENT(IN)               :: index_to_cell_3c
+      INTEGER, ALLOCATABLE, DIMENSION(:, :), INTENT(IN)  :: index_to_cell_3c
       INTEGER, ALLOCATABLE, DIMENSION(:, :, :), &
          INTENT(IN)                                      :: cell_to_index_3c
-      INTEGER, DIMENSION(:, :), INTENT(IN)               :: index_to_cell_dm
+      INTEGER, DIMENSION(:, :), INTENT(IN), POINTER      :: index_to_cell_dm
       LOGICAL, INTENT(OUT)                               :: R_minus_S_needed
       LOGICAL, INTENT(IN)                                :: do_kpoints_cubic_RPA
 
