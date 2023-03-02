@@ -44,7 +44,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE nnp_write_arc(nnp, para_env)
       TYPE(nnp_type), INTENT(IN)                         :: nnp
-      TYPE(cp_para_env_type), INTENT(IN), POINTER        :: para_env
+      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env
 
       CHARACTER(len=default_string_length)               :: my_label
       INTEGER                                            :: i, j, unit_nr
@@ -54,7 +54,7 @@ CONTAINS
       logger => cp_get_default_logger()
 
       my_label = "NNP| "
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger)
          DO i = 1, nnp%n_ele
             WRITE (unit_nr, *) TRIM(my_label)//" Neural network specification for element "// &

@@ -120,7 +120,7 @@ CONTAINS
                                    reflection_z_a, reflection_z_b, do_reflection_a, do_reflection_b)
       TYPE(cp_eri_mme_param), INTENT(INOUT)              :: param
       TYPE(libint_potential_type), INTENT(IN)            :: potential_parameter
-      TYPE(cp_para_env_type), INTENT(IN), POINTER        :: para_env
+      TYPE(cp_para_env_type), INTENT(IN)        :: para_env
       TYPE(qs_environment_type), INTENT(IN), POINTER     :: qs_env
       CHARACTER(len=*), INTENT(IN), OPTIONAL             :: basis_type_a, basis_type_b
       REAL(KIND=dp), DIMENSION(:, :), INTENT(INOUT)      :: hab
@@ -315,9 +315,9 @@ CONTAINS
 
       END IF
 
-      CALL para_env%group%sum(hab)
-      IF (PRESENT(hdab)) CALL para_env%group%sum(hdab)
-      IF (PRESENT(hadb)) CALL para_env%group%sum(hadb)
+      CALL para_env%sum(hab)
+      IF (PRESENT(hdab)) CALL para_env%sum(hdab)
+      IF (PRESENT(hadb)) CALL para_env%sum(hadb)
 
       CALL timestop(handle)
    END SUBROUTINE mp2_eri_2c_integrate
@@ -621,7 +621,7 @@ CONTAINS
                                    mat_dabc, mat_adbc, mat_abdc)
       TYPE(cp_eri_mme_param), INTENT(INOUT)              :: param
       TYPE(libint_potential_type), INTENT(IN)            :: potential_parameter
-      TYPE(cp_para_env_type), INTENT(IN), POINTER        :: para_env
+      TYPE(cp_para_env_type), INTENT(IN)        :: para_env
       TYPE(qs_environment_type), INTENT(IN), POINTER     :: qs_env
       INTEGER, INTENT(IN)                                :: first_c, last_c
       TYPE(dbcsr_p_type), DIMENSION(last_c - first_c + 1), &

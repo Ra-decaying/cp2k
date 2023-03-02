@@ -1651,7 +1651,7 @@ CONTAINS
          DIMENSION(:), POINTER                           :: nl_iterator
 
       CALL timeset(routineN, handle)
-      ASSOCIATE (group => para_env%group, mype => para_env%mepos + 1, npe => para_env%num_pe)
+      ASSOCIATE (mype => para_env%mepos + 1, npe => para_env%num_pe)
 
          ! Allocate work storage
          ALLOCATE (nblock(npe), nelement(npe))
@@ -1680,8 +1680,8 @@ CONTAINS
 
          IF (full_output) THEN
             ! XXXXXXXX should gather/scatter this on ionode
-            CALL group%sum(nblock)
-            CALL group%sum(nelement)
+            CALL para_env%sum(nblock)
+            CALL para_env%sum(nelement)
 
             nblock_sum = SUM(INT(nblock, KIND=int_8))
             nelement_sum = SUM(INT(nelement, KIND=int_8))
@@ -1691,10 +1691,10 @@ CONTAINS
             nelement_sum = nelement(mype)
             nelement_max = nelement(mype)
             tmp = (/nblock_sum, nelement_sum/)
-            CALL group%sum(tmp)
+            CALL para_env%sum(tmp)
             nblock_sum = tmp(1); nelement_sum = tmp(2)
             tmp = (/nblock_max, nelement_max/)
-            CALL group%max(tmp)
+            CALL para_env%max(tmp)
             nblock_max = tmp(1); nelement_max = tmp(2)
          END IF
 
@@ -1756,8 +1756,7 @@ CONTAINS
       CHARACTER(LEN=*), INTENT(IN)                       :: nl_type, middle_name, nlname
 
       CHARACTER(LEN=default_string_length)               :: string, unit_str
-      INTEGER                                            :: iatom, inode, iw, jatom, mype, &
-                                                            nneighbor, nnode
+      INTEGER                                            :: iatom, inode, iw, jatom, nneighbor, nnode
       INTEGER, DIMENSION(3)                              :: cell_b
       REAL(dp)                                           :: dab, unit_conv
       REAL(dp), DIMENSION(3)                             :: ra, rab, rb
@@ -1778,49 +1777,50 @@ CONTAINS
                                    local=.TRUE., &
                                    log_filename=.FALSE., &
                                    file_position="REWIND")
-         mype = para_env%mepos
-         CALL section_vals_val_get(neighbor_list_section, "UNIT", c_val=unit_str)
-         unit_conv = cp_unit_from_cp2k(1.0_dp, TRIM(unit_str))
+         ASSOCIATE (mype => para_env%mepos)
+            CALL section_vals_val_get(neighbor_list_section, "UNIT", c_val=unit_str)
+            unit_conv = cp_unit_from_cp2k(1.0_dp, TRIM(unit_str))
 
-         ! Print headline
-         string = ""
-         WRITE (UNIT=string, FMT="(A,I5,A)") &
-            TRIM(nlname)//" IN "//TRIM(unit_str)//" (PROCESS", mype, ")"
-         CALL compress(string)
-         IF (iw > 0) WRITE (UNIT=iw, FMT="(/,/,T2,A)") TRIM(string)
+            ! Print headline
+            string = ""
+            WRITE (UNIT=string, FMT="(A,I5,A)") &
+               TRIM(nlname)//" IN "//TRIM(unit_str)//" (PROCESS", mype, ")"
+            CALL compress(string)
+            IF (iw > 0) WRITE (UNIT=iw, FMT="(/,/,T2,A)") TRIM(string)
 
-         nneighbor = 0
+            nneighbor = 0
 
-         CALL neighbor_list_iterator_create(nl_iterator, ab)
-         DO WHILE (neighbor_list_iterate(nl_iterator) == 0)
-            CALL get_iterator_info(nl_iterator, inode=inode, nnode=nnode, &
-                                   iatom=iatom, jatom=jatom, cell=cell_b, r=rab)
-            nneighbor = nneighbor + 1
-            ra(:) = pbc(particle_set(iatom)%r, cell)
-            rb(:) = ra(:) + rab(:)
-            dab = SQRT(rab(1)*rab(1) + rab(2)*rab(2) + rab(3)*rab(3))
-            IF (iw > 0) THEN
-               IF (inode == 1) THEN
-                  WRITE (UNIT=iw, FMT="(/,T2,I5,3X,I6,3X,3F12.6)") &
-                     iatom, nnode, ra(1:3)*unit_conv
+            CALL neighbor_list_iterator_create(nl_iterator, ab)
+            DO WHILE (neighbor_list_iterate(nl_iterator) == 0)
+               CALL get_iterator_info(nl_iterator, inode=inode, nnode=nnode, &
+                                      iatom=iatom, jatom=jatom, cell=cell_b, r=rab)
+               nneighbor = nneighbor + 1
+               ra(:) = pbc(particle_set(iatom)%r, cell)
+               rb(:) = ra(:) + rab(:)
+               dab = SQRT(rab(1)*rab(1) + rab(2)*rab(2) + rab(3)*rab(3))
+               IF (iw > 0) THEN
+                  IF (inode == 1) THEN
+                     WRITE (UNIT=iw, FMT="(/,T2,I5,3X,I6,3X,3F12.6)") &
+                        iatom, nnode, ra(1:3)*unit_conv
+                  END IF
+                  WRITE (UNIT=iw, FMT="(T10,I6,3X,3I4,3F12.6,2X,F12.6)") &
+                     jatom, cell_b(1:3), rb(1:3)*unit_conv, dab*unit_conv
                END IF
-               WRITE (UNIT=iw, FMT="(T10,I6,3X,3I4,3F12.6,2X,F12.6)") &
-                  jatom, cell_b(1:3), rb(1:3)*unit_conv, dab*unit_conv
-            END IF
-         END DO
-         CALL neighbor_list_iterator_release(nl_iterator)
+            END DO
+            CALL neighbor_list_iterator_release(nl_iterator)
 
-         string = ""
-         WRITE (UNIT=string, FMT="(A,I12,A,I12)") &
-            "Total number of neighbor interactions for process", mype, ":", &
-            nneighbor
-         CALL compress(string)
-         IF (iw > 0) WRITE (UNIT=iw, FMT="(/,T2,A)") TRIM(string)
-         CALL cp_print_key_finished_output(unit_nr=iw, &
-                                           logger=logger, &
-                                           basis_section=neighbor_list_section, &
-                                           print_key_path=TRIM(nl_type), &
-                                           local=.TRUE.)
+            string = ""
+            WRITE (UNIT=string, FMT="(A,I12,A,I12)") &
+               "Total number of neighbor interactions for process", mype, ":", &
+               nneighbor
+            CALL compress(string)
+            IF (iw > 0) WRITE (UNIT=iw, FMT="(/,T2,A)") TRIM(string)
+            CALL cp_print_key_finished_output(unit_nr=iw, &
+                                              logger=logger, &
+                                              basis_section=neighbor_list_section, &
+                                              print_key_path=TRIM(nl_type), &
+                                              local=.TRUE.)
+         END ASSOCIATE
       END IF
 
    END SUBROUTINE write_neighbor_lists

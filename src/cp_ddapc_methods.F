@@ -623,7 +623,7 @@ CONTAINS
 ! **************************************************************************************************
    RECURSIVE SUBROUTINE ewald_ddapc_pot(cp_para_env, coeff, factor, cell, multipole_section, &
                                         particle_set, M, radii)
-      TYPE(cp_para_env_type), POINTER                    :: cp_para_env
+      TYPE(cp_para_env_type), INTENT(IN)                 :: cp_para_env
       TYPE(pw_type), INTENT(IN), POINTER                 :: coeff
       REAL(KIND=dp), INTENT(IN)                          :: factor
       TYPE(cell_type), POINTER                           :: cell
@@ -764,7 +764,7 @@ CONTAINS
          END DO ! iparticle2
       END DO ! iparticle1
       !NB sum over parallelized contributions of different nodes
-      CALL cp_para_env%group%sum(EwM)
+      CALL cp_para_env%sum(EwM)
       idim = 0
       DO iparticle2 = 1, SIZE(particle_set)
          ip2 = (iparticle2 - 1)*SIZE(radii)

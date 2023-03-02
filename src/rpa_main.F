@@ -33,8 +33,7 @@ MODULE rpa_main
                                               cp_fm_set_all,&
                                               cp_fm_to_fm,&
                                               cp_fm_type
-   USE cp_para_env,                     ONLY: cp_para_env_release,&
-                                              cp_para_env_split
+   USE cp_para_env,                     ONLY: cp_para_env_release
    USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_add,&
                                               dbcsr_clear,&
@@ -61,6 +60,7 @@ MODULE rpa_main
                                               m_memory
    USE mathconstants,                   ONLY: pi,&
                                               z_zero
+   USE message_passing,                 ONLY: mp_comm_type
    USE minimax_exp,                     ONLY: check_exp_minimax_range
    USE mp2_grids,                       ONLY: get_clenshaw_grid,&
                                               get_minimax_grid
@@ -357,7 +357,7 @@ CONTAINS
 
          CALL m_memory(mem)
          mem_real = (mem + 1024*1024 - 1)/(1024*1024)
-         CALL para_env%group%min(mem_real)
+         CALL para_env%min(mem_real)
 
          mem_per_rank = 0.0_dp
 
@@ -541,8 +541,8 @@ CONTAINS
       CALL timestop(handle2)
 
       IF (num_integ_group > 1) THEN
-         NULLIFY (para_env_RPA)
-         CALL cp_para_env_split(para_env_RPA, para_env, color_rpa_group)
+         ALLOCATE (para_env_RPA)
+         CALL para_env_RPA%from_split(para_env, color_rpa_group)
       ELSE
          para_env_RPA => para_env
       END IF
@@ -741,8 +741,8 @@ CONTAINS
                occ_high = MIN(homo, occ_low + occ_chunk - 1)
                BIb_C_rec(1:my_group_L_size, 1:rec_B_size, 1:occ_high - occ_low + 1) => &
                   BIb_C_rec_1D(1:INT(my_group_L_size, int_8)*rec_B_size*(occ_high - occ_low + 1))
-               CALL para_env_sub%group%sendrecv(BIb_C(:, :, occ_low:occ_high), proc_send, &
-                                                BIb_C_rec(:, :, 1:occ_high - occ_low + 1), proc_receive)
+               CALL para_env_sub%sendrecv(BIb_C(:, :, occ_low:occ_high), proc_send, &
+                                          BIb_C_rec(:, :, 1:occ_high - occ_low + 1), proc_receive)
 !$OMP          PARALLEL DO DEFAULT(NONE) PRIVATE(jjB,ia_global) &
 !$OMP                   SHARED(occ_low,occ_high,rec_B_size,virtual,rec_B_virtual_start,my_ia_start,my_ia_end,BIb_C_rec,BIb_C_2D,&
 !$OMP                          my_group_L_size)
@@ -828,13 +828,12 @@ CONTAINS
 
       INTEGER                                            :: col_row_proc_ratio, grid_2D(2), handle, &
                                                             iproc, iproc_col, iproc_row, ispin, &
-                                                            mepos_in_RPA_group, sub_sub_color
+                                                            mepos_in_RPA_group
       INTEGER, ALLOCATABLE, DIMENSION(:, :)              :: group_grid_2_mepos
       LOGICAL                                            :: my_blacs_ext, my_blacs_S_ext, &
                                                             my_do_im_time
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env, blacs_env_Q
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_para_env_type), POINTER                    :: para_env_exchange
       TYPE(group_dist_d1_type)                           :: gd_ia, gd_L
 
       CALL timeset(routineN, handle)
@@ -923,7 +922,7 @@ CONTAINS
             ALLOCATE (group_grid_2_mepos(0:integ_group_size - 1, 0:para_env_sub%num_pe - 1))
             group_grid_2_mepos = 0
             group_grid_2_mepos(mepos_in_RPA_group, para_env_sub%mepos) = para_env_RPA%mepos
-            CALL para_env_RPA%group%sum(group_grid_2_mepos)
+            CALL para_env_RPA%sum(group_grid_2_mepos)
 
             CALL array2fm(BIb_C_2D(ispin)%array, fm_struct, my_group_L_start, my_group_L_end, &
                           my_ia_start(ispin), my_ia_end(ispin), gd_L, gd_ia, &
@@ -939,10 +938,12 @@ CONTAINS
 
             ! sum the local data across processes belonging to different RPA group.
             IF (para_env_RPA%num_pe /= para_env%num_pe) THEN
-               sub_sub_color = para_env_RPA%mepos
-               CALL cp_para_env_split(para_env_exchange, para_env, sub_sub_color)
-               CALL para_env_exchange%group%sum(fm_mat_S(ispin)%local_data)
-               CALL cp_para_env_release(para_env_exchange)
+               BLOCK
+                  TYPE(mp_comm_type) :: comm_exchange
+                  comm_exchange = fm_mat_S(ispin)%matrix_struct%context%interconnect(para_env)
+                  CALL comm_exchange%sum(fm_mat_S(ispin)%local_data)
+                  CALL comm_exchange%free()
+               END BLOCK
             END IF
          END DO
       END IF
@@ -1570,11 +1571,11 @@ CONTAINS
             END IF
 
             IF (unit_nr > 0) CALL m_flush(unit_nr)
-            CALL para_env%group%sync() ! sync to see output
+            CALL para_env%sync() ! sync to see output
 
          END DO ! jquad
 
-         CALL para_env%group%sum(Erpa)
+         CALL para_env%sum(Erpa)
 
          IF (.NOT. do_ri_sos_laplace_mp2) THEN
             Erpa = Erpa/(pi*2.0_dp)
@@ -1582,7 +1583,7 @@ CONTAINS
          END IF
 
          IF (mp2_env%ri_rpa%do_ri_axk) THEN
-            CALL para_env%group%sum(E_axk)
+            CALL para_env%sum(E_axk)
             E_axk = E_axk/(pi*2.0_dp)
             IF (do_minimax_quad) E_axk = E_axk/2.0_dp
             mp2_env%ri_rpa%ener_axk = E_axk

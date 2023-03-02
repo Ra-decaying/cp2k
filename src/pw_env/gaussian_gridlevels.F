@@ -84,7 +84,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE destroy_gaussian_gridlevel(gridlevel_info, para_env)
       TYPE(gridlevel_info_type)                          :: gridlevel_info
-      TYPE(cp_para_env_type), OPTIONAL, POINTER          :: para_env
+      TYPE(cp_para_env_type), INTENT(IN), OPTIONAL       :: para_env
 
       INTEGER                                            :: i, output_unit
       LOGICAL                                            :: do_io
@@ -94,10 +94,10 @@ CONTAINS
       NULLIFY (logger)
       logger => cp_get_default_logger()
       IF (PRESENT(para_env)) THEN
-         group = para_env%group
+         group = para_env
          do_io = .FALSE. !subgroups completely mess up the output file
       ELSE
-         group = logger%para_env%group
+         group = logger%para_env
          do_io = .TRUE.
       END IF
 

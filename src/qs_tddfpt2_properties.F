@@ -706,7 +706,7 @@ CONTAINS
 
       ! *** excitation analysis ***
       IF (do_exc_analysis) THEN
-         CPASSERT(log_unit <= 0 .OR. para_env%mepos == para_env%source)
+         CPASSERT(log_unit <= 0 .OR. para_env%is_source())
          nmo_virt_occ_alpha = INT(nmo_virt(1), int_8)*INT(nmo_occ(1), int_8)
 
          IF (log_unit > 0) THEN
@@ -780,14 +780,14 @@ CONTAINS
                nmo_virt_occ = nmo_virt_occ + nmo_virt8(ispin)*nmo_occ8(ispin)
             END DO
 
-            IF (para_env%mepos == para_env%source) THEN
+            IF (para_env%is_source()) THEN
                ! master node
                ALLOCATE (nexcs_recv(para_env%num_pe), recv_handlers(para_env%num_pe), recv_handlers2(para_env%num_pe))
 
                ! collect number of non-negligible excitations from other nodes
                DO iproc = 1, para_env%num_pe
                   IF (iproc - 1 /= para_env%mepos) THEN
-                     CALL para_env%group%irecv(nexcs_recv(iproc:iproc), iproc - 1, recv_handlers(iproc), 0)
+                     CALL para_env%irecv(nexcs_recv(iproc:iproc), iproc - 1, recv_handlers(iproc), 0)
                   ELSE
                      nexcs_recv(iproc) = nexcs_local
                   END IF
@@ -813,11 +813,11 @@ CONTAINS
                   IF (nexcs_recv(iproc) > 0) THEN
                      IF (iproc - 1 /= para_env%mepos) THEN
                         ! excitation amplitudes
-                        CALL para_env%group%irecv(weights_recv(nmo_virt_occ + 1:nmo_virt_occ + nexcs_recv(iproc)), &
-                                                  iproc - 1, recv_handlers(iproc), 1)
+                        CALL para_env%irecv(weights_recv(nmo_virt_occ + 1:nmo_virt_occ + nexcs_recv(iproc)), &
+                                            iproc - 1, recv_handlers(iproc), 1)
                         ! compressed indices
-                        CALL para_env%group%irecv(inds_recv(nmo_virt_occ + 1:nmo_virt_occ + nexcs_recv(iproc)), &
-                                                  iproc - 1, recv_handlers2(iproc), 2)
+                        CALL para_env%irecv(inds_recv(nmo_virt_occ + 1:nmo_virt_occ + nexcs_recv(iproc)), &
+                                            iproc - 1, recv_handlers2(iproc), 2)
                      ELSE
                         ! data on master node
                         weights_recv(nmo_virt_occ + 1:nmo_virt_occ + nexcs_recv(iproc)) = weights_local(1:nexcs_recv(iproc))
@@ -839,14 +839,14 @@ CONTAINS
             ELSE
                ! working node: send the number of selected excited states to the master node
                nexcs_send(1) = nexcs_local
-               CALL para_env%group%isend(nexcs_send, para_env%source, send_handler, 0)
+               CALL para_env%isend(nexcs_send, para_env%source, send_handler, 0)
                CALL send_handler%wait()
 
                IF (nexcs_local > 0) THEN
                   ! send excitation amplitudes
-                  CALL para_env%group%isend(weights_local(1:nexcs_local), para_env%source, send_handler, 1)
+                  CALL para_env%isend(weights_local(1:nexcs_local), para_env%source, send_handler, 1)
                   ! send compressed indices
-                  CALL para_env%group%isend(inds_local(1:nexcs_local), para_env%source, send_handler2, 2)
+                  CALL para_env%isend(inds_local(1:nexcs_local), para_env%source, send_handler2, 2)
 
                   CALL send_handler%wait()
                   CALL send_handler2%wait()
@@ -855,7 +855,7 @@ CONTAINS
 
             ! sort non-negligible excitations on the master node according to their amplitudes,
             ! uncompress indices and print summary information
-            IF (para_env%mepos == para_env%source .AND. log_unit > 0) THEN
+            IF (para_env%is_source() .AND. log_unit > 0) THEN
                weights_neg_abs_recv(:) = -ABS(weights_recv)
                CALL sort(weights_neg_abs_recv, INT(nexcs), inds)
 
@@ -883,7 +883,7 @@ CONTAINS
             END IF
 
             ! deallocate temporary arrays
-            IF (para_env%mepos == para_env%source) &
+            IF (para_env%is_source()) &
                DEALLOCATE (weights_recv, weights_neg_abs_recv, inds_recv, inds)
          END DO
 

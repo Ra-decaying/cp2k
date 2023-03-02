@@ -34,8 +34,7 @@ MODULE mp2_gpw
         cp_add_default_logger, cp_get_default_logger, cp_logger_create, &
         cp_logger_get_default_unit_nr, cp_logger_release, cp_logger_set, cp_logger_type, &
         cp_rm_default_logger, cp_to_string
-   USE cp_para_env,                     ONLY: cp_para_env_release,&
-                                              cp_para_env_split
+   USE cp_para_env,                     ONLY: cp_para_env_release
    USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_clear_mempools, dbcsr_copy, dbcsr_create, dbcsr_distribution_release, &
@@ -245,11 +244,12 @@ CONTAINS
 
       ! a para_env
       color_sub = para_env%mepos/mp2_env%mp2_num_proc
-      CALL cp_para_env_split(para_env_sub, para_env, color_sub)
+      ALLOCATE (para_env_sub)
+      CALL para_env_sub%from_split(para_env, color_sub)
 
       ! each of the sub groups might need to generate output
       logger => cp_get_default_logger()
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
          local_unit_nr = cp_logger_get_default_unit_nr(logger, local=.FALSE.)
       ELSE
          local_unit_nr = default_output_unit
@@ -272,7 +272,7 @@ CONTAINS
       IF (do_im_time) THEN
 
          IF (mp2_env%ri_metric%potential_type == ri_default) THEN
-            IF (SUM(periodic) > 0) THEN
+            IF (SUM(periodic) == 1 .OR. SUM(periodic) == 3) THEN
                mp2_env%ri_metric%potential_type = do_potential_id
             ELSE
                mp2_env%ri_metric%potential_type = do_potential_truncated
@@ -307,14 +307,16 @@ CONTAINS
          CALL m_flush(unit_nr)
       END IF
 
-      ! a logger
-      NULLIFY (logger_sub)
-      CALL cp_logger_create(logger_sub, para_env=para_env_sub, &
-                            default_global_unit_nr=local_unit_nr, close_global_unit_on_dealloc=.FALSE.)
-      CALL cp_logger_set(logger_sub, local_filename="MP2_localLog")
-      ! set to a custom print level (we could also have a different print level for para_env%source)
-      logger_sub%iter_info%print_level = mp2_env%mp2_gpw%print_level
-      CALL cp_add_default_logger(logger_sub)
+      IF (.NOT. mp2_env%ri_g0w0%print_local_bandgap) THEN
+         ! a logger
+         NULLIFY (logger_sub)
+         CALL cp_logger_create(logger_sub, para_env=para_env_sub, &
+                               default_global_unit_nr=local_unit_nr, close_global_unit_on_dealloc=.FALSE.)
+         CALL cp_logger_set(logger_sub, local_filename="MP2_localLog")
+         ! set to a custom print level (we could also have a different print level for para_env%source)
+         logger_sub%iter_info%print_level = mp2_env%mp2_gpw%print_level
+         CALL cp_add_default_logger(logger_sub)
+      END IF
 
       ! a blacs_env (ignore the globenv stored defaults for now)
       blacs_grid_layout = BLACS_GRID_SQUARE
@@ -628,8 +630,10 @@ CONTAINS
 
       CALL cp_blacs_env_release(blacs_env_sub)
 
-      CALL cp_rm_default_logger()
-      CALL cp_logger_release(logger_sub)
+      IF (.NOT. mp2_env%ri_g0w0%print_local_bandgap) THEN
+         CALL cp_rm_default_logger()
+         CALL cp_logger_release(logger_sub)
+      END IF
 
       CALL cp_para_env_release(para_env_sub)
 
@@ -712,7 +716,7 @@ CONTAINS
       NULLIFY (local_C_internal)
 
       max_row_col_local = MAX(nrow_local, ncol_local)
-      CALL para_env%group%max(max_row_col_local)
+      CALL para_env%max(max_row_col_local)
 
       ALLOCATE (local_col_row_info(0:max_row_col_local, 2))
       local_col_row_info = 0
@@ -742,7 +746,7 @@ CONTAINS
       DO proc_shift = 1, para_env%num_pe - 1
          ! first exchange information on the local data
          rec_col_row_info = 0
-         CALL para_env%group%sendrecv(local_col_row_info, proc_send_static, rec_col_row_info, proc_receive_static)
+         CALL para_env%sendrecv(local_col_row_info, proc_send_static, rec_col_row_info, proc_receive_static)
          nrow_rec = rec_col_row_info(0, 1)
          ncol_rec = rec_col_row_info(0, 2)
 
@@ -756,7 +760,7 @@ CONTAINS
          rec_C = 0.0_dp
 
          ! then send and receive the real data
-         CALL para_env%group%sendrecv(local_C, proc_send_static, rec_C, proc_receive_static)
+         CALL para_env%sendrecv(local_C, proc_send_static, rec_C, proc_receive_static)
 
          ! accumulate the received data on C buffer
          DO iiB = 1, nrow_rec
@@ -896,7 +900,7 @@ CONTAINS
          rec_C = 0.0_dp
 
          ! then send and receive the real data
-         CALL para_env_sub%group%sendrecv(Cread, proc_send, rec_C, proc_receive)
+         CALL para_env_sub%sendrecv(Cread, proc_send, rec_C, proc_receive)
 
          ! accumulate data on mo_coeff_to_build the data received from proc_rec
          CALL dbcsr_iterator_start(iter, mo_coeff_to_build)

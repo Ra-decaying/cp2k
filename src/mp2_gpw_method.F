@@ -24,8 +24,6 @@ MODULE mp2_gpw_method
                                               cp_fm_get_info,&
                                               cp_fm_release,&
                                               cp_fm_type
-   USE cp_para_env,                     ONLY: cp_para_env_release,&
-                                              cp_para_env_split
    USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_create, dbcsr_get_info, dbcsr_iterator_blocks_left, dbcsr_iterator_next_block, &
@@ -38,6 +36,7 @@ MODULE mp2_gpw_method
    USE kinds,                           ONLY: dp,&
                                               int_8
    USE machine,                         ONLY: m_memory
+   USE message_passing,                 ONLY: mp_comm_type
    USE mp2_eri_gpw,                     ONLY: calc_potential_gpw,&
                                               cleanup_gpw,&
                                               prepare_gpw
@@ -137,13 +136,12 @@ CONTAINS
       INTEGER :: a, a_group_counter, b, b_global, b_group_counter, blk, col, col_offset, col_size, &
          color_counter, EX_end, EX_end_send, EX_start, EX_start_send, group_counter, handle, &
          handle2, handle3, i, i_counter, i_group_counter, index_proc_shift, j, max_b_size, &
-         max_batch_size_A, max_batch_size_I, max_row_col_local, mepos_in_EX_group, &
-         my_A_batch_size, my_A_virtual_end, my_A_virtual_start, my_B_size, my_B_virtual_end, &
-         my_B_virtual_start, my_I_batch_size, my_I_occupied_end, my_I_occupied_start, &
-         my_q_position, ncol_local, nfullcols_total, nfullrows_total, ngroup, nrow_local, p, p_best
-      INTEGER :: proc_receive, proc_send, q, q_best, row, row_offset, row_size, size_EX, &
-         size_EX_send, size_of_exchange_group, sub_sub_color, virtual, virtual_beta, wfn_calc, &
-         wfn_calc_best
+         max_batch_size_A, max_batch_size_I, max_row_col_local, my_A_batch_size, my_A_virtual_end, &
+         my_A_virtual_start, my_B_size, my_B_virtual_end, my_B_virtual_start, my_I_batch_size, &
+         my_I_occupied_end, my_I_occupied_start, my_q_position, ncol_local, nfullcols_total, &
+         nfullrows_total, ngroup, nrow_local, p, p_best, proc_receive, proc_send, q
+      INTEGER :: q_best, row, row_offset, row_size, size_EX, size_EX_send, sub_sub_color, virtual, &
+         virtual_beta, wfn_calc, wfn_calc_best
       INTEGER(KIND=int_8)                                :: mem
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: vector_B_sizes, &
                                                             vector_batch_A_size_group, &
@@ -159,12 +157,12 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: data_block
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
       TYPE(cp_fm_type)                                   :: fm_BIb_jb
-      TYPE(cp_para_env_type), POINTER                    :: para_env_exchange
       TYPE(dbcsr_iterator_type)                          :: iter
       TYPE(dbcsr_type)                                   :: matrix_ia_jb, matrix_ia_jb_beta, &
                                                             matrix_ia_jnu, matrix_ia_jnu_beta
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(group_dist_d1_type)                           :: gd_exchange
+      TYPE(mp_comm_type)                                 :: comm_exchange
       TYPE(pw_env_type), POINTER                         :: pw_env_sub
       TYPE(pw_poisson_type), POINTER                     :: poisson_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
@@ -211,7 +209,7 @@ CONTAINS
                              col_indices=col_indices)
 
          max_row_col_local = MAX(nrow_local, ncol_local)
-         CALL para_env_sub%group%max(max_row_col_local)
+         CALL para_env_sub%max(max_row_col_local)
 
          ALLOCATE (local_col_row_info(0:max_row_col_local, 2))
          local_col_row_info = 0
@@ -244,7 +242,7 @@ CONTAINS
       virtual = nmo - homo
 
       wfn_size = REAL(SIZE(rho_r%cr3d), KIND=dp)
-      CALL para_env%group%max(wfn_size)
+      CALL para_env%max(wfn_size)
 
       ngroup = para_env%num_pe/para_env_sub%num_pe
 
@@ -269,7 +267,7 @@ CONTAINS
 
       CALL m_memory(mem)
       mem_real = (mem + 1024*1024 - 1)/(1024*1024)
-      CALL para_env%group%min(mem_real)
+      CALL para_env%min(mem_real)
 
       mem_real = mp2_memory - mem_real
       mem_real = MAX(mem_real, mem_min)
@@ -377,13 +375,10 @@ CONTAINS
 
       ! now create a group that contains all the proc that have the same 2 virtual starting points
       ! in this way it is possible to sum the common integrals needed for the full MP2 energy
-      CALL cp_para_env_split(para_env_exchange, para_env, sub_sub_color)
+      CALL comm_exchange%from_split(para_env, sub_sub_color)
 
       ! create an array containing the information for communication
-      CALL create_group_dist(gd_exchange, my_I_occupied_start, my_I_occupied_end, my_I_batch_size, para_env_exchange)
-
-      mepos_in_EX_group = para_env_exchange%mepos
-      size_of_exchange_group = para_env_exchange%num_pe
+      CALL create_group_dist(gd_exchange, my_I_occupied_start, my_I_occupied_end, my_I_batch_size, comm_exchange)
 
       ALLOCATE (psi_i(my_I_occupied_start:my_I_occupied_end))
       DO i = my_I_occupied_start, my_I_occupied_end
@@ -496,63 +491,66 @@ CONTAINS
          END DO
 
          IF (calc_ex) THEN
-            CALL timeset(routineN//"_E_Ex_2", handle3)
-            ! calculate the contribution to MP2 energy for my local data
-            DO i = 1, my_I_batch_size
-               DO j = my_I_occupied_start, my_I_occupied_end
-                  DO b = 1, my_B_size
-                     b_global = b - 1 + my_B_virtual_start
-                     Emp2_EX = Emp2_EX + BIb_C(b, j, i)*BIb_C(b, i + my_I_occupied_start - 1, j - my_I_occupied_start + 1) &
-                               /(Eigenval(a) + Eigenval(homo + b_global) - Eigenval(i + my_I_occupied_start - 1) - Eigenval(j))
-                  END DO
-               END DO
-            END DO
 
-            ! start communicating and collecting exchange contributions from
-            ! other processes in my exchange group
-            DO index_proc_shift = 1, size_of_exchange_group - 1
-               proc_send = MODULO(mepos_in_EX_group + index_proc_shift, size_of_exchange_group)
-               proc_receive = MODULO(mepos_in_EX_group - index_proc_shift, size_of_exchange_group)
-
-               CALL get_group_dist(gd_exchange, proc_receive, EX_start, EX_end, size_EX)
-
-               ALLOCATE (BIb_EX(my_B_size, my_I_batch_size, size_EX))
-               BIb_EX = 0.0_dp
-
-               CALL get_group_dist(gd_exchange, proc_send, EX_start_send, EX_end_send, size_EX_send)
-
-               ALLOCATE (BIb_send(my_B_size, size_EX_send, my_I_batch_size))
-               BIb_send(1:my_B_size, 1:size_EX_send, 1:my_I_batch_size) = &
-                  BIb_C(1:my_B_size, EX_start_send:EX_end_send, 1:my_I_batch_size)
-
-               ! send and receive the exchange array
-               CALL para_env_exchange%group%sendrecv(BIb_send, proc_send, BIb_EX, proc_receive)
-
+            ASSOCIATE (mepos_in_EX_group => comm_exchange%mepos, size_of_exchange_group => comm_exchange%num_pe)
+               CALL timeset(routineN//"_E_Ex_2", handle3)
+               ! calculate the contribution to MP2 energy for my local data
                DO i = 1, my_I_batch_size
-                  DO j = 1, size_EX
+                  DO j = my_I_occupied_start, my_I_occupied_end
                      DO b = 1, my_B_size
                         b_global = b - 1 + my_B_virtual_start
-                        Emp2_EX = Emp2_EX + BIb_C(b, j + EX_start - 1, i)*BIb_EX(b, i, j) &
-                                  /(Eigenval(a) + Eigenval(homo + b_global) - Eigenval(i + my_I_occupied_start - 1) &
-                                    - Eigenval(j + EX_start - 1))
+                        Emp2_EX = Emp2_EX + BIb_C(b, j, i)*BIb_C(b, i + my_I_occupied_start - 1, j - my_I_occupied_start + 1) &
+                                  /(Eigenval(a) + Eigenval(homo + b_global) - Eigenval(i + my_I_occupied_start - 1) - Eigenval(j))
                      END DO
                   END DO
                END DO
 
-               DEALLOCATE (BIb_EX)
-               DEALLOCATE (BIb_send)
+               ! start communicating and collecting exchange contributions from
+               ! other processes in my exchange group
+               DO index_proc_shift = 1, size_of_exchange_group - 1
+                  proc_send = MODULO(mepos_in_EX_group + index_proc_shift, size_of_exchange_group)
+                  proc_receive = MODULO(mepos_in_EX_group - index_proc_shift, size_of_exchange_group)
 
-            END DO
-            CALL timestop(handle3)
+                  CALL get_group_dist(gd_exchange, proc_receive, EX_start, EX_end, size_EX)
+
+                  ALLOCATE (BIb_EX(my_B_size, my_I_batch_size, size_EX))
+                  BIb_EX = 0.0_dp
+
+                  CALL get_group_dist(gd_exchange, proc_send, EX_start_send, EX_end_send, size_EX_send)
+
+                  ALLOCATE (BIb_send(my_B_size, size_EX_send, my_I_batch_size))
+                  BIb_send(1:my_B_size, 1:size_EX_send, 1:my_I_batch_size) = &
+                     BIb_C(1:my_B_size, EX_start_send:EX_end_send, 1:my_I_batch_size)
+
+                  ! send and receive the exchange array
+                  CALL comm_exchange%sendrecv(BIb_send, proc_send, BIb_EX, proc_receive)
+
+                  DO i = 1, my_I_batch_size
+                     DO j = 1, size_EX
+                        DO b = 1, my_B_size
+                           b_global = b - 1 + my_B_virtual_start
+                           Emp2_EX = Emp2_EX + BIb_C(b, j + EX_start - 1, i)*BIb_EX(b, i, j) &
+                                     /(Eigenval(a) + Eigenval(homo + b_global) - Eigenval(i + my_I_occupied_start - 1) &
+                                       - Eigenval(j + EX_start - 1))
+                        END DO
+                     END DO
+                  END DO
+
+                  DEALLOCATE (BIb_EX)
+                  DEALLOCATE (BIb_send)
+
+               END DO
+               CALL timestop(handle3)
+            END ASSOCIATE
          END IF
 
       END DO
       CALL timestop(handle2)
 
-      CALL para_env%group%sum(Emp2_Cou)
-      CALL para_env%group%sum(Emp2_EX)
+      CALL para_env%sum(Emp2_Cou)
+      CALL para_env%sum(Emp2_EX)
       Emp2 = Emp2_Cou + Emp2_EX
-      IF (do_alpha_beta) CALL para_env%group%sum(Emp2_AB)
+      IF (do_alpha_beta) CALL para_env%sum(Emp2_AB)
 
       DEALLOCATE (my_Cocc)
       DEALLOCATE (my_Cvirt)
@@ -564,7 +562,7 @@ CONTAINS
       END IF
       CALL release_group_dist(gd_exchange)
 
-      CALL cp_para_env_release(para_env_exchange)
+      CALL comm_exchange%free()
 
       CALL dbcsr_release(matrix_ia_jnu)
       CALL dbcsr_release(matrix_ia_jb)
@@ -718,7 +716,7 @@ CONTAINS
 
             ! first exchange information on the local data
             rec_col_row_info = 0
-            CALL para_env_sub%group%sendrecv(local_col_row_info, proc_send, rec_col_row_info, proc_receive)
+            CALL para_env_sub%sendrecv(local_col_row_info, proc_send, rec_col_row_info, proc_receive)
             nrow_rec = rec_col_row_info(0, 1)
             ncol_rec = rec_col_row_info(0, 2)
 
@@ -732,7 +730,7 @@ CONTAINS
             rec_BI = 0.0_dp
 
             ! then send and receive the real data
-            CALL para_env_sub%group%sendrecv(local_BI, proc_send, rec_BI, proc_receive)
+            CALL para_env_sub%sendrecv(local_BI, proc_send, rec_BI, proc_receive)
 
             ! accumulate the received data on BIb_jb buffer
             DO jjB = 1, ncol_rec
@@ -818,7 +816,7 @@ CONTAINS
       END DO
       CALL dbcsr_iterator_stop(iter)
 
-      CALL para_env_sub%group%sum(my_Cocc)
+      CALL para_env_sub%sum(my_Cocc)
 
       ! accumulate data from mo_coeff_o into Cocc
       CALL dbcsr_iterator_start(iter, mo_coeff_v)
@@ -838,7 +836,7 @@ CONTAINS
       END DO
       CALL dbcsr_iterator_stop(iter)
 
-      CALL para_env_sub%group%sum(my_Cvirt)
+      CALL para_env_sub%sum(my_Cvirt)
 
       CALL timestop(handle)
 

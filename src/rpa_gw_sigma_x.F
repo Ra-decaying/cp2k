@@ -217,13 +217,13 @@ CONTAINS
       ! to T-cell index and then to k-points for band structure calculation
       IF (do_kpoints_from_Gamma) THEN
          ! not yet there: open shell
-         ALLOCATE (qs_env%mp2_env%ri_g0w0%matrix_ks(1))
-         DO ispin = 1, 1
+         ALLOCATE (qs_env%mp2_env%ri_g0w0%matrix_ks(nspins))
+         DO ispin = 1, nspins
             NULLIFY (qs_env%mp2_env%ri_g0w0%matrix_ks(ispin)%matrix)
             ALLOCATE (qs_env%mp2_env%ri_g0w0%matrix_ks(ispin)%matrix)
             CALL dbcsr_create(qs_env%mp2_env%ri_g0w0%matrix_ks(ispin)%matrix, &
                               template=matrix_ks(ispin)%matrix)
-            CALL dbcsr_desymmetrize(matrix_ks(1)%matrix, &
+            CALL dbcsr_desymmetrize(matrix_ks(ispin)%matrix, &
                                     qs_env%mp2_env%ri_g0w0%matrix_ks(ispin)%matrix)
 
          END DO
@@ -497,8 +497,8 @@ CONTAINS
          ! to T-cell index and then to k-points for band structure calculation
          IF (do_kpoints_from_Gamma) THEN
             ! not yet there: open shell
-            ALLOCATE (qs_env%mp2_env%ri_g0w0%matrix_sigma_x_minus_vxc(1))
-            DO ispin = 1, 1
+            ALLOCATE (qs_env%mp2_env%ri_g0w0%matrix_sigma_x_minus_vxc(nspins))
+            DO ispin = 1, nspins
                NULLIFY (qs_env%mp2_env%ri_g0w0%matrix_sigma_x_minus_vxc(ispin)%matrix)
                ALLOCATE (qs_env%mp2_env%ri_g0w0%matrix_sigma_x_minus_vxc(ispin)%matrix)
                CALL dbcsr_create(qs_env%mp2_env%ri_g0w0%matrix_sigma_x_minus_vxc(ispin)%matrix, &
@@ -578,7 +578,7 @@ CONTAINS
 
          END DO
 
-         CALL para_env%group%sum(vec_Sigma_x_minus_vxc_gw)
+         CALL para_env%sum(vec_Sigma_x_minus_vxc_gw)
 
       END IF
 
@@ -628,7 +628,7 @@ CONTAINS
             CALL trafo_to_mo_and_kpoints(qs_env, &
                                          mat_exchange_for_kp_from_gamma(1)%matrix, &
                                          vec_Sigma_x(homo - gw_corr_lev_occ + 1:homo + gw_corr_lev_virt, :), &
-                                         homo, gw_corr_lev_occ, gw_corr_lev_virt)
+                                         homo, gw_corr_lev_occ, gw_corr_lev_virt, 1)
 
             CALL dbcsr_release(mat_exchange_for_kp_from_gamma(1)%matrix)
             DEALLOCATE (mat_exchange_for_kp_from_gamma(1)%matrix)
@@ -708,7 +708,7 @@ CONTAINS
             CPABORT('Stop after printing exchange energies.')
 
          ELSE
-            CALL para_env%group%sync()
+            CALL para_env%sync()
          END IF
 
       END IF
@@ -886,8 +886,8 @@ CONTAINS
 
       END DO
 
-      CALL para_env%group%sum(vec_Sigma_x_minus_vxc_gw)
-      CALL para_env%group%sum(vec_Sigma_x_minus_vxc_gw_im)
+      CALL para_env%sum(vec_Sigma_x_minus_vxc_gw)
+      CALL para_env%sum(vec_Sigma_x_minus_vxc_gw_im)
 
       ! also adjust in the case of kpoints too big gw_corr_lev_occ and gw_corr_lev_virt
       DO ispin = 1, nspins

@@ -156,7 +156,8 @@ CONTAINS
    SUBROUTINE pw_env_rebuild(pw_env, qs_env, external_para_env)
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(cp_para_env_type), OPTIONAL, POINTER          :: external_para_env
+      TYPE(cp_para_env_type), INTENT(IN), OPTIONAL, &
+         TARGET                                          :: external_para_env
 
       CHARACTER(len=*), PARAMETER                        :: routineN = 'pw_env_rebuild'
 
@@ -377,7 +378,7 @@ CONTAINS
       END IF
 
       DO igrid_level = 1, ngrid_level
-         CALL pw_grid_create(pw_grid, para_env%group)
+         CALL pw_grid_create(pw_grid, para_env)
 
          cutilev = cutoff(igrid_level)
 
@@ -466,7 +467,7 @@ CONTAINS
       IF (set_vdw_pool) THEN
          CPASSERT(ASSOCIATED(old_pw_grid))
          IF (.NOT. ASSOCIATED(vdw_ref_grid)) vdw_ref_grid => old_pw_grid
-         CALL pw_grid_create(vdw_grid, para_env%group)
+         CALL pw_grid_create(vdw_grid, para_env)
          IF (iounit > 0) WRITE (iounit, "(/,T2,A)") "PW_GRID| Grid for non-local vdW functional"
          CALL pw_grid_setup(my_cell%hmat, vdw_grid, grid_span=grid_span, &
                             cutoff=dispersion_env%pw_cutoff, &
@@ -982,7 +983,7 @@ CONTAINS
                                     extension=".Log")
 
       IF (uf_grid) THEN
-         CALL pw_grid_create(xc_super_ref_pw_grid, para_env%group)
+         CALL pw_grid_create(xc_super_ref_pw_grid, para_env)
          CALL pw_grid_setup(cell_ref%hmat, xc_super_ref_pw_grid, grid_span=grid_span, &
                             cutoff=4._dp*cutilev, spherical=spherical, odd=.FALSE., fft_usage=.TRUE., &
                             ncommensurate=my_ncommensurate, icommensurate=1, &
@@ -991,7 +992,7 @@ CONTAINS
          super_ref_pw_grid => xc_super_ref_pw_grid
       END IF
       IF (mt_s_grid) THEN
-         CALL pw_grid_create(mt_super_ref_pw_grid, para_env%group)
+         CALL pw_grid_create(mt_super_ref_pw_grid, para_env)
 
          IF (ASSOCIATED(xc_super_ref_pw_grid)) THEN
             CPABORT("special grid for mt and fine xc grid not compatible")

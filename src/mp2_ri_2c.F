@@ -52,8 +52,7 @@ MODULE mp2_ri_2c
                                               cp_fm_set_all,&
                                               cp_fm_to_fm,&
                                               cp_fm_type
-   USE cp_para_env,                     ONLY: cp_para_env_release,&
-                                              cp_para_env_split
+   USE cp_para_env,                     ONLY: cp_para_env_release
    USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_copy, dbcsr_create, dbcsr_deallocate_matrix, dbcsr_desymmetrize, &
@@ -79,8 +78,10 @@ MODULE mp2_ri_2c
                                               kpoint_type
    USE libint_2c_3c,                    ONLY: compare_potential_types,&
                                               libint_potential_type
-   USE machine,                         ONLY: m_flush
-   USE message_passing,                 ONLY: mp_request_type
+   USE machine,                         ONLY: m_flush,&
+                                              m_walltime
+   USE message_passing,                 ONLY: mp_comm_type,&
+                                              mp_request_type
    USE mp2_eri,                         ONLY: mp2_eri_2c_integrate
    USE mp2_eri_gpw,                     ONLY: mp2_eri_2c_integrate_gpw
    USE mp2_types,                       ONLY: integ_mat_buffer_type
@@ -258,8 +259,8 @@ CONTAINS
             ! k-dependent 1/r Coulomb matrix V_PQ(k)
             CALL compute_V_by_lattice_sum(qs_env, fm_matrix_L_kpoints, fm_matrix_Minv_L_kpoints, kpoints)
 
-            CALL inversion_of_M_and_mult_with_chol_dec_of_V(fm_matrix_Minv_L_kpoints, fm_matrix_L_kpoints, &
-                                                            dimen_RI, kpoints, qs_env%mp2_env%ri_rpa_im_time%eps_eigval_S)
+            CALL inversion_of_M_and_mult_with_chol_dec_of_V(fm_matrix_Minv_L_kpoints, fm_matrix_L_kpoints, dimen_RI, &
+                                                            unit_nr, kpoints, qs_env%mp2_env%ri_rpa_im_time%eps_eigval_S)
 
             CALL setup_trunc_coulomb_potential_for_exchange_self_energy(qs_env, trunc_coulomb)
 
@@ -783,7 +784,8 @@ CONTAINS
       INTEGER, INTENT(IN)                                :: eri_method
       TYPE(cp_eri_mme_param), POINTER                    :: eri_param
       TYPE(cp_para_env_type), INTENT(IN)                 :: para_env
-      TYPE(cp_para_env_type), INTENT(IN), POINTER        :: para_env_sub, para_env_L
+      TYPE(cp_para_env_type), INTENT(IN), POINTER        :: para_env_sub
+      TYPE(cp_para_env_type), INTENT(OUT), POINTER       :: para_env_L
       REAL(KIND=dp), INTENT(IN)                          :: mp2_memory
       TYPE(cp_fm_type), INTENT(OUT)                      :: fm_matrix_L
       INTEGER, INTENT(IN)                                :: ngroup, color_sub
@@ -804,7 +806,7 @@ CONTAINS
       INTEGER :: best_group_size, color_L, group_size, handle, handle2, i_global, iatom, iiB, &
          ikind, iproc, j_global, jjB, natom, ncol_local, nkind, nrow_local, nsgf, potential_type, &
          proc_receive, proc_receive_static, proc_send_static, proc_shift, rec_L_end, rec_L_size, &
-         rec_L_start, strat_group_size, sub_sub_color
+         rec_L_start, strat_group_size
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: kind_of
       INTEGER, DIMENSION(:), POINTER                     :: col_indices, row_indices
       LOGICAL                                            :: my_do_im_time
@@ -814,7 +816,6 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env_L
       TYPE(cp_fm_type)                                   :: fm_matrix_L_diag
-      TYPE(cp_para_env_type), POINTER                    :: para_env_exchange
       TYPE(group_dist_d1_type)                           :: gd_sub_array
       TYPE(gto_basis_set_type), POINTER                  :: basis_set_a
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
@@ -916,16 +917,12 @@ CONTAINS
 
       ! create the L group
       color_L = para_env%mepos/best_group_size
-      CALL cp_para_env_split(para_env_L, para_env, color_L)
+      ALLOCATE (para_env_L)
+      CALL para_env_L%from_split(para_env, color_L)
 
       ! create the blacs_L
       NULLIFY (blacs_env_L)
       CALL cp_blacs_env_create(blacs_env=blacs_env_L, para_env=para_env_L)
-
-      ! now create the exchange group (for communication only between members not belonging to the
-      ! same group
-      sub_sub_color = para_env_sub%mepos
-      CALL cp_para_env_split(para_env_exchange, para_env_L, sub_sub_color)
 
       ! create the full matrix L defined in the L group
       CALL create_matrix_L(fm_matrix_L, blacs_env_L, dimen_RI, para_env_L, "fm_matrix_L", fm_matrix_L_extern)
@@ -937,68 +934,70 @@ CONTAINS
                                                 dimen_RI)
 
       ELSE
+         BLOCK
+            TYPE(mp_comm_type) :: comm_exchange
 
-         CALL create_group_dist(gd_sub_array, my_group_L_start, &
-                                my_group_L_end, my_group_L_size, para_env_exchange)
+            CALL comm_exchange%from_split(para_env_L, para_env_sub%mepos)
 
-         CALL cp_fm_get_info(matrix=fm_matrix_L, &
-                             nrow_local=nrow_local, &
-                             ncol_local=ncol_local, &
-                             row_indices=row_indices, &
-                             col_indices=col_indices)
+            CALL create_group_dist(gd_sub_array, my_group_L_start, &
+                                   my_group_L_end, my_group_L_size, comm_exchange)
 
-         DO jjB = 1, ncol_local
-            j_global = col_indices(jjB)
-            IF (j_global >= my_group_L_start .AND. j_global <= my_group_L_end) THEN
-               DO iiB = 1, nrow_local
-                  i_global = row_indices(iiB)
-                  fm_matrix_L%local_data(iiB, jjB) = L_local_col(i_global, j_global - my_group_L_start + 1)
-               END DO
-            END IF
-         END DO
-
-         proc_send_static = MODULO(para_env_exchange%mepos + 1, para_env_exchange%num_pe)
-         proc_receive_static = MODULO(para_env_exchange%mepos - 1, para_env_exchange%num_pe)
-
-         DO proc_shift = 1, para_env_exchange%num_pe - 1
-            proc_receive = MODULO(para_env_exchange%mepos - proc_shift, para_env_exchange%num_pe)
-
-            CALL get_group_dist(gd_sub_array, proc_receive, rec_L_start, rec_L_end, rec_L_size)
-
-            ALLOCATE (L_external_col(dimen_RI, rec_L_size))
-            L_external_col = 0.0_dp
-
-            CALL para_env_exchange%group%sendrecv(L_local_col, proc_send_static, L_external_col, proc_receive_static)
+            CALL cp_fm_get_info(matrix=fm_matrix_L, &
+                                nrow_local=nrow_local, &
+                                ncol_local=ncol_local, &
+                                row_indices=row_indices, &
+                                col_indices=col_indices)
 
             DO jjB = 1, ncol_local
                j_global = col_indices(jjB)
-               IF (j_global >= rec_L_start .AND. j_global <= rec_L_end) THEN
+               IF (j_global >= my_group_L_start .AND. j_global <= my_group_L_end) THEN
                   DO iiB = 1, nrow_local
                      i_global = row_indices(iiB)
-                     fm_matrix_L%local_data(iiB, jjB) = L_external_col(i_global, j_global - rec_L_start + 1)
+                     fm_matrix_L%local_data(iiB, jjB) = L_local_col(i_global, j_global - my_group_L_start + 1)
                   END DO
                END IF
             END DO
 
-            CALL MOVE_ALLOC(L_external_col, L_local_col)
-         END DO
+            proc_send_static = MODULO(comm_exchange%mepos + 1, comm_exchange%num_pe)
+            proc_receive_static = MODULO(comm_exchange%mepos - 1, comm_exchange%num_pe)
 
-         CALL release_group_dist(gd_sub_array)
+            DO proc_shift = 1, comm_exchange%num_pe - 1
+               proc_receive = MODULO(comm_exchange%mepos - proc_shift, comm_exchange%num_pe)
 
+               CALL get_group_dist(gd_sub_array, proc_receive, rec_L_start, rec_L_end, rec_L_size)
+
+               ALLOCATE (L_external_col(dimen_RI, rec_L_size))
+               L_external_col = 0.0_dp
+
+               CALL comm_exchange%sendrecv(L_local_col, proc_send_static, L_external_col, proc_receive_static)
+
+               DO jjB = 1, ncol_local
+                  j_global = col_indices(jjB)
+                  IF (j_global >= rec_L_start .AND. j_global <= rec_L_end) THEN
+                     DO iiB = 1, nrow_local
+                        i_global = row_indices(iiB)
+                        fm_matrix_L%local_data(iiB, jjB) = L_external_col(i_global, j_global - rec_L_start + 1)
+                     END DO
+                  END IF
+               END DO
+
+               CALL MOVE_ALLOC(L_external_col, L_local_col)
+            END DO
+
+            CALL release_group_dist(gd_sub_array)
+            CALL comm_exchange%free()
+         END BLOCK
       END IF
 
       DEALLOCATE (L_local_col)
 
-      ! free the old exchange group stuff
-      CALL cp_para_env_release(para_env_exchange)
-
       ! create the new group for the sum of the local data over all processes
-      sub_sub_color = para_env_L%mepos
-      CALL cp_para_env_split(para_env_exchange, para_env, sub_sub_color)
-
-      CALL para_env_exchange%group%sum(fm_matrix_L%local_data)
-
-      CALL cp_para_env_release(para_env_exchange)
+      BLOCK
+         TYPE(mp_comm_type) :: comm_exchange
+         comm_exchange = fm_matrix_L%matrix_struct%context%interconnect(para_env)
+         CALL comm_exchange%sum(fm_matrix_L%local_data)
+         CALL comm_exchange%free()
+      END BLOCK
 
       cond_num = 1.0_dp
       num_small_eigen = 0
@@ -1056,7 +1055,7 @@ CONTAINS
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: num_eval
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)           :: evals
       TYPE(cp_fm_type)                                   :: evecs
-      TYPE(cp_para_env_type), POINTER                    :: para_env_exchange
+      TYPE(mp_comm_type)                                 :: comm_exchange
 
       CALL timeset(routineN, handle)
 
@@ -1099,10 +1098,10 @@ CONTAINS
       ! Step 1: Get a communicator connecting processes with same id within subgroups
       ! use that group_size_L is divisible by the total number of processes (see above)
       group_size_L = para_env%num_pe/matrix%matrix_struct%para_env%num_pe
-      CALL cp_para_env_split(para_env_exchange, para_env, matrix%matrix_struct%para_env%mepos)
+      comm_exchange = matrix%matrix_struct%context%interconnect(para_env)
 
       ALLOCATE (num_eval(0:group_size_L - 1))
-      CALL para_env_exchange%group%allgather(num_small_evals, num_eval)
+      CALL comm_exchange%allgather(num_small_evals, num_eval)
 
       num_small_evals = MINVAL(num_eval)
 
@@ -1113,13 +1112,13 @@ CONTAINS
          needed_evals = nrow - num_small_evals
 
          ! Step 3: Broadcast your local data to all other processes
-         CALL para_env_exchange%group%bcast(evecs%local_data, pos_max(1))
-         CALL para_env_exchange%group%bcast(cond_num, pos_max(1))
+         CALL comm_exchange%bcast(evecs%local_data, pos_max(1))
+         CALL comm_exchange%bcast(cond_num, pos_max(1))
       END IF
 
       DEALLOCATE (num_eval)
 
-      CALL cp_para_env_release(para_env_exchange)
+      CALL comm_exchange%free()
 
       CALL reset_size_matrix(matrix, needed_evals, matrix%matrix_struct)
 
@@ -1242,7 +1241,7 @@ CONTAINS
 
       CALL timeset(routineN//"_2", handle2)
 
-      CALL para_env%group%alltoall(num_entries_send, num_entries_rec, 1)
+      CALL para_env%alltoall(num_entries_send, num_entries_rec, 1)
 
       CALL timestop(handle2)
 
@@ -1442,15 +1441,16 @@ CONTAINS
 !> \param fm_matrix_Minv_L_kpoints ...
 !> \param fm_matrix_L_kpoints ...
 !> \param dimen_RI ...
+!> \param unit_nr ...
 !> \param kpoints ...
 !> \param eps_eigval_S ...
 ! **************************************************************************************************
    SUBROUTINE inversion_of_M_and_mult_with_chol_dec_of_V(fm_matrix_Minv_L_kpoints, fm_matrix_L_kpoints, &
-                                                         dimen_RI, kpoints, eps_eigval_S)
+                                                         dimen_RI, unit_nr, kpoints, eps_eigval_S)
 
       TYPE(cp_fm_type), DIMENSION(:, :), INTENT(IN)      :: fm_matrix_Minv_L_kpoints, &
                                                             fm_matrix_L_kpoints
-      INTEGER, INTENT(IN)                                :: dimen_RI
+      INTEGER, INTENT(IN)                                :: dimen_RI, unit_nr
       TYPE(kpoint_type), POINTER                         :: kpoints
       REAL(KIND=dp), INTENT(IN)                          :: eps_eigval_S
 
@@ -1459,6 +1459,7 @@ CONTAINS
          czero = CMPLX(0.0_dp, 0.0_dp, KIND=dp), ione = CMPLX(0.0_dp, 1.0_dp, KIND=dp)
 
       INTEGER                                            :: handle, ikp, nkp
+      REAL(KIND=dp)                                      :: t1, t2
       TYPE(cp_cfm_type)                                  :: cfm_matrix_K_tmp, cfm_matrix_M_tmp, &
                                                             cfm_matrix_V_tmp, cfm_matrix_Vtrunc_tmp
       TYPE(cp_fm_struct_type), POINTER                   :: matrix_struct
@@ -1475,6 +1476,8 @@ CONTAINS
       CALL get_kpoint_info(kpoints, nkp=nkp)
 
       DO ikp = 1, nkp
+
+         t1 = m_walltime()
 
          CALL cp_cfm_scale_and_add_fm(czero, cfm_matrix_M_tmp, cone, fm_matrix_Minv_L_kpoints(ikp, 1))
          CALL cp_cfm_scale_and_add_fm(cone, cfm_matrix_M_tmp, ione, fm_matrix_Minv_L_kpoints(ikp, 2))
@@ -1495,6 +1498,12 @@ CONTAINS
 
          ! move
          CALL cp_cfm_to_fm(cfm_matrix_K_tmp, fm_matrix_Minv_L_kpoints(ikp, 1), fm_matrix_Minv_L_kpoints(ikp, 2))
+
+         t2 = m_walltime()
+
+         IF (unit_nr > 0) WRITE (unit_nr, '(T3,A,I4,A,I3, A, F11.1)') &
+            'INTEGRAL_INFO| Integrals for k-point', ikp, ' / ', nkp, &
+            ', execution time (s):', t2 - t1
 
       END DO
 
@@ -1753,7 +1762,7 @@ CONTAINS
       local_L(:, :) = local_L_internal(1:nrow_local, 1:ncol_local)
 
       max_row_col_local = MAX(nrow_local, ncol_local)
-      CALL para_env%group%max(max_row_col_local)
+      CALL para_env%max(max_row_col_local)
 
       ALLOCATE (local_col_row_info(0:max_row_col_local, 2))
       local_col_row_info = 0
@@ -1785,7 +1794,7 @@ CONTAINS
       DO proc_shift = 1, para_env%num_pe - 1
          ! first exchange information on the local data
          rec_col_row_info = 0
-         CALL para_env%group%sendrecv(local_col_row_info, proc_send_static, rec_col_row_info, proc_receive_static)
+         CALL para_env%sendrecv(local_col_row_info, proc_send_static, rec_col_row_info, proc_receive_static)
          nrow_rec = rec_col_row_info(0, 1)
          ncol_rec = rec_col_row_info(0, 2)
 
@@ -1799,7 +1808,7 @@ CONTAINS
          rec_L = 0.0_dp
 
          ! then send and receive the real data
-         CALL para_env%group%sendrecv(local_L, proc_send_static, rec_L, proc_receive_static)
+         CALL para_env%sendrecv(local_L, proc_send_static, rec_L, proc_receive_static)
 
          ! accumulate the received data on my_Lrows
          DO jjB = 1, ncol_rec

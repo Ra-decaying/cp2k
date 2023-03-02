@@ -259,8 +259,8 @@ CONTAINS
 
       CHARACTER(len=*), PARAMETER                        :: routineN = 'nmr_shift_gapw'
 
-      INTEGER :: handle, ia, iat, iatom, idir2_1, idir3_1, ikind, ir, ira, ispin, j, jatom, mepos, &
-         n_nics, na, natom, natom_local, natom_tot, nkind, nnics_local, nr, nra, nspins, num_pe, &
+      INTEGER :: handle, ia, iat, iatom, idir2_1, idir3_1, ikind, ir, ira, ispin, j, jatom, &
+         n_nics, na, natom, natom_local, natom_tot, nkind, nnics_local, nr, nra, nspins, &
          output_unit
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: list_j, list_nics_j
       INTEGER, DIMENSION(2)                              :: bo
@@ -364,9 +364,7 @@ CONTAINS
          IF (paw_atom) THEN
             !
             ! Distribute the atoms of this kind
-            num_pe = para_env%num_pe
-            mepos = para_env%mepos
-            bo = get_limit(natom, num_pe, mepos)
+            bo = get_limit(natom, para_env%num_pe, para_env%mepos)
             !
             DO iat = bo(1), bo(2)
                iatom = atom_list(iat)
@@ -465,20 +463,20 @@ CONTAINS
       END DO ! ikind
       !
       !
-      CALL para_env%group%sum(itegrated_jrho)
+      CALL para_env%sum(itegrated_jrho)
       IF (output_unit > 0) THEN
          WRITE (output_unit, '(T2,A,E24.16)') 'Integrated local j_'&
               &//ACHAR(idir + 119)//ACHAR(iB + 119)//'(r)=', itegrated_jrho
       END IF
       !
-      CALL para_env%group%sum(cs_loc_tmp)
+      CALL para_env%sum(cs_loc_tmp)
       chemical_shift_loc(:, iB, :) = chemical_shift_loc(:, iB, :) &
            & - nmr_env%shift_factor_gapw*cs_loc_tmp(:, :)/2.0_dp
       !
       DEALLOCATE (cs_loc_tmp, list_j, dist_ij)
       !
       IF (do_nics) THEN
-         CALL para_env%group%sum(cs_nics_loc_tmp)
+         CALL para_env%sum(cs_nics_loc_tmp)
          chemical_shift_nics_loc(:, iB, :) = chemical_shift_nics_loc(:, iB, :) &
               & - nmr_env%shift_factor_gapw*cs_nics_loc_tmp(:, :)/2.0_dp
          !

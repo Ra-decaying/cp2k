@@ -36,7 +36,6 @@ MODULE kpoint_io
    USE kinds,                           ONLY: default_path_length
    USE kpoint_types,                    ONLY: get_kpoint_info,&
                                               kpoint_type
-   USE message_passing,                 ONLY: mp_comm_type
    USE orbital_pointers,                ONLY: nso
    USE particle_types,                  ONLY: particle_type
    USE qs_dftb_types,                   ONLY: qs_dftb_atom_type
@@ -308,20 +307,16 @@ CONTAINS
       CHARACTER(LEN=*), PARAMETER :: routineN = 'read_kpoints_restart'
 
       CHARACTER(LEN=default_path_length)                 :: file_name
-      INTEGER                                            :: handle, restart_unit, source
+      INTEGER                                            :: handle, restart_unit
       LOGICAL                                            :: exist
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(mp_comm_type)                                 :: group
 
       CALL timeset(routineN, handle)
       logger => cp_get_default_logger()
 
       restart_unit = -1
 
-      group = para_env%group
-      source = para_env%source
-
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
 
          CALL wfn_restart_file_name(file_name, exist, dft_section, logger, kp=.TRUE.)
          IF (id_nr /= 0) THEN
@@ -341,10 +336,10 @@ CONTAINS
                                     natom, restart_unit, natom_mismatch)
 
       ! only the io_node returns natom_mismatch, must broadcast it
-      CALL group%bcast(natom_mismatch, source)
+      CALL para_env%bcast(natom_mismatch)
 
       ! Close restart file
-      IF (para_env%ionode) CALL close_file(unit_number=restart_unit)
+      IF (para_env%is_source()) CALL close_file(unit_number=restart_unit)
 
       CALL timestop(handle)
 
@@ -375,15 +370,11 @@ CONTAINS
 
       INTEGER                                            :: ic, image, ispin, nao, nao_read, &
                                                             natom_read, ni, nimages, nset_max, &
-                                                            nshell_max, nspin, nspin_read, source, &
+                                                            nshell_max, nspin, nspin_read, &
                                                             version_read
       INTEGER, DIMENSION(3)                              :: cell
       INTEGER, DIMENSION(:, :, :), POINTER               :: cell_to_index
       LOGICAL                                            :: natom_match
-      TYPE(mp_comm_type)                                 :: group
-
-      group = para_env%group
-      source = para_env%source
 
       CPASSERT(ASSOCIATED(denmat))
       CALL dbcsr_get_info(denmat(1, 1)%matrix, nfullrows_total=nao)
@@ -395,7 +386,7 @@ CONTAINS
          CALL get_kpoint_info(kpoint=kpoints, cell_to_index=cell_to_index)
       END IF
 
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
          READ (rst_unit) version_read
          IF (version_read /= version) THEN
             CALL cp_abort(__LOCATION__, &
@@ -415,7 +406,7 @@ CONTAINS
       END IF
 
       ! make natom_match and natom_mismatch uniform across all nodes
-      CALL group%bcast(natom_match, source)
+      CALL para_env%bcast(natom_match)
       natom_mismatch = .NOT. natom_match
       ! handle natom_match false
       IF (natom_mismatch) THEN
@@ -425,22 +416,22 @@ CONTAINS
 
          DO
             ispin = 0
-            IF (para_env%ionode) THEN
+            IF (para_env%is_source()) THEN
                READ (rst_unit) ispin, nspin_read, ni
             END IF
-            CALL group%bcast(ispin, source)
-            CALL group%bcast(nspin_read, source)
-            CALL group%bcast(ni, source)
+            CALL para_env%bcast(ispin)
+            CALL para_env%bcast(nspin_read)
+            CALL para_env%bcast(ni)
             IF (nspin_read /= nspin) THEN
                CALL cp_abort(__LOCATION__, &
                              " READ RESTART : Different spin polarisation not supported")
             END IF
             DO ic = 1, ni
-               IF (para_env%ionode) THEN
+               IF (para_env%is_source()) THEN
                   READ (rst_unit) image, cell
                END IF
-               CALL group%bcast(image, source)
-               CALL group%bcast(cell, source)
+               CALL para_env%bcast(image)
+               CALL para_env%bcast(cell)
                !
                CALL cp_fm_read_unformatted(fmat, rst_unit)
                !

@@ -340,7 +340,7 @@ CONTAINS
 
       END DO
 
-      CALL para_env_sub%group%sum(L_local_col)
+      CALL para_env_sub%sum(L_local_col)
 
       CALL cleanup_gpw(qs_env, e_cutoff_old, cutoff_old, relative_cutoff_old, para_env_sub, pw_env_sub, &
                        task_list_sub, auxbas_pw_pool, rho_r, rho_g, pot_g, psi_L)
@@ -1108,7 +1108,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:), &
          INTENT(IN)                                      :: e_cutoff_old
       REAL(KIND=dp), INTENT(IN)                          :: cutoff_old, relative_cutoff_old
-      TYPE(cp_para_env_type), INTENT(IN), POINTER        :: para_env_sub
+      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env_sub
       TYPE(pw_env_type), POINTER                         :: pw_env_sub
       TYPE(task_list_type), POINTER                      :: task_list_sub
       TYPE(pw_pool_type), INTENT(IN), POINTER            :: auxbas_pw_pool

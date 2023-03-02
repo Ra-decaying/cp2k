@@ -181,7 +181,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE swarm_message_mpi_send(msg, group, dest, tag)
       TYPE(swarm_message_type), INTENT(IN)               :: msg
-      TYPE(mp_comm_type), INTENT(IN) :: group
+      CLASS(mp_comm_type), INTENT(IN) :: group
       INTEGER, INTENT(IN)                                :: dest, tag
 
       TYPE(message_entry_type), POINTER                  :: curr_entry
@@ -204,7 +204,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE swarm_message_mpi_recv(msg, group, src, tag)
       TYPE(swarm_message_type), INTENT(INOUT)            :: msg
-      TYPE(mp_comm_type), INTENT(IN)                                :: group
+      CLASS(mp_comm_type), INTENT(IN)                                :: group
       INTEGER, INTENT(INOUT)                             :: src, tag
 
       INTEGER                                            :: i, length
@@ -231,31 +231,32 @@ CONTAINS
    SUBROUTINE swarm_message_mpi_bcast(msg, src, group)
       TYPE(swarm_message_type), INTENT(INOUT)            :: msg
       INTEGER, INTENT(IN)                                :: src
-      TYPE(mp_comm_type), INTENT(IN) :: group
+      CLASS(mp_comm_type), INTENT(IN) :: group
 
-      INTEGER                                            :: i, length, mepos, num_pe
+      INTEGER                                            :: i, length
       TYPE(message_entry_type), POINTER                  :: curr_entry
 
-      CALL group%environ(num_pe, mepos)
+      ASSOCIATE (mepos => group%mepos)
 
-      IF (mepos /= src .AND. ASSOCIATED(msg%root)) CPABORT("message not empty")
-      length = swarm_message_length(msg)
-      CALL group%bcast(length, src)
+         IF (mepos /= src .AND. ASSOCIATED(msg%root)) CPABORT("message not empty")
+         length = swarm_message_length(msg)
+         CALL group%bcast(length, src)
 
-      IF (mepos == src) curr_entry => msg%root
+         IF (mepos == src) curr_entry => msg%root
 
-      DO i = 1, length
-         IF (mepos /= src) ALLOCATE (curr_entry)
+         DO i = 1, length
+            IF (mepos /= src) ALLOCATE (curr_entry)
 
-         CALL swarm_message_entry_mpi_bcast(curr_entry, src, group, mepos)
+            CALL swarm_message_entry_mpi_bcast(curr_entry, src, group, mepos)
 
-         IF (mepos == src) THEN
-            curr_entry => curr_entry%next
-         ELSE
-            curr_entry%next => msg%root
-            msg%root => curr_entry
-         END IF
-      END DO
+            IF (mepos == src) THEN
+               curr_entry => curr_entry%next
+            ELSE
+               curr_entry%next => msg%root
+               msg%root => curr_entry
+            END IF
+         END DO
+      END ASSOCIATE
 
    END SUBROUTINE swarm_message_mpi_bcast
 
@@ -438,7 +439,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE swarm_message_entry_mpi_send(ENTRY, group, dest, tag)
       TYPE(message_entry_type), INTENT(IN)               :: ENTRY
-      TYPE(mp_comm_type), INTENT(IN) :: group
+      CLASS(mp_comm_type), INTENT(IN) :: group
       INTEGER, INTENT(IN)                                :: dest, tag
 
       INTEGER, DIMENSION(default_string_length)          :: value_str_arr
@@ -502,7 +503,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE swarm_message_entry_mpi_recv(ENTRY, group, src, tag)
       TYPE(message_entry_type), INTENT(INOUT)            :: ENTRY
-      TYPE(mp_comm_type), INTENT(IN)                                :: group
+      CLASS(mp_comm_type), INTENT(IN)                                :: group
       INTEGER, INTENT(INOUT)                             :: src, tag
 
       INTEGER                                            :: datatype, s
@@ -563,7 +564,7 @@ CONTAINS
    SUBROUTINE swarm_message_entry_mpi_bcast(ENTRY, src, group, mepos)
       TYPE(message_entry_type), INTENT(INOUT)            :: ENTRY
       INTEGER, INTENT(IN)                                :: src, mepos
-      TYPE(mp_comm_type), INTENT(IN) :: group
+      CLASS(mp_comm_type), INTENT(IN) :: group
 
       INTEGER                                            :: datasize, datatype
       INTEGER, DIMENSION(default_string_length)          :: value_str_arr
