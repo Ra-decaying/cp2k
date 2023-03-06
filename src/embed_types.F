@@ -44,6 +44,7 @@ MODULE embed_types
                                               particle_list_type
    USE particle_types,                  ONLY: particle_type
    USE pw_types,                        ONLY: pw_type
+   USE qs_mo_types,                     ONLY: mo_set_type
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -129,27 +130,32 @@ MODULE embed_types
       INTEGER                                          :: i_iter, n_iter, &
                                                           cluster_subsys_num, environment_subsys_num, &
                                                           high_level_subsys_num, ref_subsys_num
-      INTEGER, ALLOCATABLE, DIMENSION(:)               :: all_nspins, naos, nmos
+      INTEGER, ALLOCATABLE, DIMENSION(:)               :: all_nspins, naos, naos_in_pbpe, nmos
       LOGICAL                                          :: abs_localization, change_spin, converged, &
                                                           do_kpoints, open_shell_embed
       REAL(KIND=dp)                                    :: conv_max, conv_rmse, &
                                                           HOMO_energy_A, HOMO_energy_B, &
                                                           norm_D_A_diff, norm_D_B_diff
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)         :: max_diff
-      TYPE(cp_fm_p_type), ALLOCATABLE, DIMENSION(:)    :: mo_coeffs
-      TYPE(cp_fm_type), POINTER                        :: dm_1, dm_2, dm_total, &
-                                                          dm_1_beta, dm_2_beta, dm_total_beta, &
-                                                          dm_1_diff, dm_2_diff, dm_total_diff, &
-                                                          dm_1_diff_beta, dm_2_diff_beta, dm_total_diff_beta, &
-                                                          dm_cluster, dm_environment, &
-                                                          dm_cluster_beta, dm_environment_beta, &
-                                                          dm_cluster_diff, dm_environment_diff, &
-                                                          dm_cluster_diff_beta, dm_environment_diff_beta, &
-                                                          S_total, KS_total, S_1, S_2, &
-                                                          KS_1, KS_2, KS_1_in_2, KS_2_in_1, &
-                                                          S_12, S_21, KS_12, KS_21, &
-                                                          work1_1, work1_2, work2_1, work2_2, &
-                                                          ortho_1, ortho_2, P_1, P_2, P_environment
+      TYPE(cp_fm_type), POINTER                        :: dm_1 => NULL(), dm_2 => NULL(), dm_total => NULL(), &
+                                                          dm_1_beta => NULL(), dm_2_beta => NULL(), dm_total_beta => NULL(), &
+                                                          dm_1_diff => NULL(), dm_2_diff => NULL(), dm_total_diff => NULL(), &
+                                                          dm_1_diff_beta => NULL(), dm_2_diff_beta => NULL(), dm_total_diff_beta => NULL(), &
+                                                          dm_cluster => NULL(), dm_environment => NULL(), &
+                                                          dm_cluster_beta => NULL(), dm_environment_beta => NULL(), &
+                                                          dm_cluster_diff => NULL(), dm_environment_diff => NULL(), &
+                                                          dm_cluster_diff_beta => NULL(), dm_environment_diff_beta => NULL(), &
+                                                          S_total => NULL(), S_1 => NULL(), S_2 => NULL(), &
+                                                          KS_total => NULL(), KS_1 => NULL(), KS_2 => NULL(), &
+                                                          KS_1_in_2 => NULL(), KS_2_in_1 => NULL(), &
+                                                          S_12 => NULL(), S_21 => NULL(), &
+                                                          KS_12 => NULL(), KS_21 => NULL(), &
+                                                          work1_1 => NULL(), work1_2 => NULL(), &
+                                                          work2_1 => NULL(), work2_2 => NULL(), &
+                                                          ortho_1 => NULL(), ortho_2 => NULL(), &
+                                                          P_1 => NULL(), P_2 => NULL(), P_environment => NULL()
+      TYPE(mo_set_type), POINTER                       :: mos_1 => NULL(), mos_2 => NULL(), &
+                                                          mos_cluster => NULL(), mos_environment => NULL()
    END TYPE opt_pbpe_pot_type
 
 ! **************************************************************************************************

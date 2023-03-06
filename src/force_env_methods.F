@@ -2179,7 +2179,7 @@ CONTAINS
 !                                                            fm_tmp_4, fm_tmp_5, fm_tmp_6, &
 !                                                            fm_u_ghost, fm_test
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 !      TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: dbcsr_S_kp_ref, dbcsr_S_kp_AB, &
 !                                                            dbcsr_KS_kp_ref, dbcsr_KS_kp_AB, &
 !                                                            dbcsr_S_kp_A, dbcsr_S_kp_B, &
@@ -2210,10 +2210,10 @@ CONTAINS
 
       NULLIFY (dft_section, input, opt_pbpe_section)
       NULLIFY (energy, dft_control)
-      nspins = 1
 
       CALL get_qs_env(qs_env=force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, &
-                      energy=energy, input=input)
+                      dft_control=dft_control, energy=energy, input=input)
+      nspins = dft_control%nspins
 
       dft_section => section_vals_get_subs_vals(input, "DFT")
       opt_pbpe_section => section_vals_get_subs_vals(input, &
