@@ -357,15 +357,15 @@ CONTAINS
       ! Initialize mos_1
       ALLOCATE (mo_coeff_new)
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
-                               nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%naos_in_pbpe(1))
+                               nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%nmos(1))
       CALL cp_fm_create(mo_coeff_new, fm_struct)
       CALL cp_fm_set_all(mo_coeff_new, 0.0_dp)
 
       CALL get_qs_env(qs_env=force_env%sub_force_env(1)%force_env%qs_env, mos=mos)
       CALL get_mo_set(mos(1), nelectron=nelectron, maxocc=maxocc, n_el_f=n_el_f, mo_coeff=mo_coeff)
 
-      IF (opt_pbpe%abs_localization) THEN
-         CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_new, opt_pbpe%naos(1), opt_pbpe%naos(1), &
+      IF (.NOT. opt_pbpe%abs_localization) THEN
+         CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_new, opt_pbpe%naos(1), opt_pbpe%nmos(1), &
                                  1, 1, 1, 1)
       ELSE
          CALL cp_fm_to_fm(mo_coeff, mo_coeff_new)
@@ -382,17 +382,18 @@ CONTAINS
       NULLIFY (mo_coeff_new)
 
       ! Initialize mos_2
+      ALLOCATE (mo_coeff_new)
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
-                               nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%naos_in_pbpe(2))
+                               nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%nmos(2))
       CALL cp_fm_create(mo_coeff_new, fm_struct)
       CALL cp_fm_set_all(mo_coeff_new, 0.0_dp)
 
       CALL get_qs_env(qs_env=force_env%sub_force_env(2)%force_env%qs_env, mos=mos)
       CALL get_mo_set(mos(1), nelectron=nelectron, maxocc=maxocc, n_el_f=n_el_f, mo_coeff=mo_coeff)
 
-      IF (opt_pbpe%abs_localization) THEN
-         CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_new, opt_pbpe%naos(2), opt_pbpe%naos(2), &
-                                 1, 1, opt_pbpe%naos(1) + 1, opt_pbpe%naos(1))
+      IF (.NOT. opt_pbpe%abs_localization) THEN
+         CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_new, opt_pbpe%naos(2), opt_pbpe%nmos(2), &
+                                 1, 1, opt_pbpe%naos(1) + 1, 1)
       ELSE
          CALL cp_fm_to_fm(mo_coeff, mo_coeff_new)
       END IF
@@ -406,6 +407,8 @@ CONTAINS
       CALL cp_fm_release(mo_coeff_new)
       DEALLOCATE (mo_coeff_new)
       NULLIFY (mo_coeff_new)
+
+      CALL cp_blacs_env_release(blacs_env)
 
       ! Associate mos pointers
       IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
@@ -730,11 +733,13 @@ CONTAINS
    SUBROUTINE release_pbpe_opt(opt_pbpe)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
+      CALL release_pbpe_matrices(opt_pbpe)
+
+      CALL release_pbpe_mo_sets(opt_pbpe)
+
       DEALLOCATE (opt_pbpe%naos)
       DEALLOCATE (opt_pbpe%naos_in_pbpe)
       DEALLOCATE (opt_pbpe%nmos)
-
-      CALL release_pbpe_matrices(opt_pbpe)
 
    END SUBROUTINE release_pbpe_opt
 
