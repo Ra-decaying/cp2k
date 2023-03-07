@@ -29,11 +29,12 @@ MODULE optimize_pbpe_potential
    USE message_passing,                 ONLY: mp_para_env_type
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
-   USE qs_mo_types,                     ONLY: allocate_mo_set,&
-                                              deallocate_mo_set,&
-                                              init_mo_set,&
+   USE qs_mo_types,                     ONLY: deallocate_mo_set,&
+                                              duplicate_mo_set,&
                                               get_mo_set,&
-                                              mo_set_type
+                                              mo_set_type,&
+                                              set_mo_set
+                                              
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -289,13 +290,14 @@ CONTAINS
       ! Release context
       CALL cp_blacs_env_release(blacs_env)
 
-      IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
 
+
+      ! Associate matrix pointers
+      IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
          opt_pbpe%dm_cluster => opt_pbpe%dm_1
          opt_pbpe%dm_environment => opt_pbpe%dm_2
          opt_pbpe%dm_cluster_diff => opt_pbpe%dm_1_diff
          opt_pbpe%dm_environment_diff => opt_pbpe%dm_2_diff
-
          ! Beta spin counterparts
          IF (opt_pbpe%open_shell_embed) THEN
             opt_pbpe%dm_cluster_beta => opt_pbpe%dm_1_beta
@@ -303,14 +305,11 @@ CONTAINS
             opt_pbpe%dm_cluster_diff_beta => opt_pbpe%dm_1_diff_beta
             opt_pbpe%dm_environment_diff_beta => opt_pbpe%dm_2_diff_beta
          END IF
-
       ELSE IF (opt_pbpe%cluster_subsys_num .EQ. 2) THEN
-
          opt_pbpe%dm_cluster => opt_pbpe%dm_2
          opt_pbpe%dm_environment => opt_pbpe%dm_1
          opt_pbpe%dm_cluster_diff => opt_pbpe%dm_2_diff
          opt_pbpe%dm_environment_diff => opt_pbpe%dm_1_diff
-
          ! Beta spin counterparts
          IF (opt_pbpe%open_shell_embed) THEN
             opt_pbpe%dm_cluster_beta => opt_pbpe%dm_2_beta
@@ -318,7 +317,6 @@ CONTAINS
             opt_pbpe%dm_cluster_diff_beta => opt_pbpe%dm_2_diff_beta
             opt_pbpe%dm_environment_diff_beta => opt_pbpe%dm_1_diff_beta
          END IF
-
       END IF
 
    END SUBROUTINE init_pbpe_matrices
@@ -332,12 +330,10 @@ CONTAINS
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
-      INTEGER                                            :: i_force_eval, nelectron
-      LOGICAL                                            :: uniform_occupation
-      REAL(kind=dp)                                      :: maxocc, mu, n_el_f
+      INTEGER                                            :: i_force_eval
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_fm_type), POINTER                          :: mo_coeff, mo_coeff_new
+      TYPE(cp_fm_type), POINTER                          :: mo_coeff, mo_coeff_1, mo_coeff_2
       TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(mp_para_env_type), POINTER                    :: para_env
 
@@ -351,62 +347,56 @@ CONTAINS
 
       ALLOCATE (opt_pbpe%mos_1, opt_pbpe%mos_2)
 
-      NULLIFY (mo_coeff_new)
+      NULLIFY (mo_coeff_1, mo_coeff_2)
       NULLIFY (fm_struct)
 
       ! Initialize mos_1
-      ALLOCATE (mo_coeff_new)
+      CALL get_qs_env(qs_env=force_env%sub_force_env(1)%force_env%qs_env, mos=mos)
+      CALL duplicate_mo_set(opt_pbpe%mos_1, mos(1))
+      ! Copy mos_1%mo_coeff to mo_coeff_1
+      CALL get_mo_set(opt_pbpe%mos_1, mo_coeff=mo_coeff)
+      ALLOCATE (mo_coeff_1)
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%nmos(1))
-      CALL cp_fm_create(mo_coeff_new, fm_struct)
-      CALL cp_fm_set_all(mo_coeff_new, 0.0_dp)
-
-      CALL get_qs_env(qs_env=force_env%sub_force_env(1)%force_env%qs_env, mos=mos)
-      CALL get_mo_set(mos(1), nelectron=nelectron, maxocc=maxocc, n_el_f=n_el_f, mo_coeff=mo_coeff)
-
+      CALL cp_fm_create(mo_coeff_1, fm_struct)
+      CALL cp_fm_set_all(mo_coeff_1, 0.0_dp)
       IF (.NOT. opt_pbpe%abs_localization) THEN
-         CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_new, opt_pbpe%naos(1), opt_pbpe%nmos(1), &
-                                 1, 1, 1, 1)
+         CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_1, opt_pbpe%naos(1), opt_pbpe%nmos(1), 1, 1, 1, 1)
       ELSE
-         CALL cp_fm_to_fm(mo_coeff, mo_coeff_new)
+         CALL cp_fm_to_fm(mo_coeff, mo_coeff_1)
       END IF
-
-      CALL allocate_mo_set(opt_pbpe%mos_1, opt_pbpe%naos_in_pbpe(1), opt_pbpe%nmos(1), &
-                           nelectron, n_el_f, maxocc, 0.0_dp)
-      CALL init_mo_set(opt_pbpe%mos_1, fm_ref=mo_coeff_new, name="Subsystem 1 MO")
+      ! Replace mos_1%mo_coeff with mo_coeff_1
+      CALL set_mo_set(opt_pbpe%mos_1, nao=opt_pbpe%naos_in_pbpe(1))
+      CALL cp_fm_release(opt_pbpe%mos_1%mo_coeff)
+      DEALLOCATE (opt_pbpe%mos_1%mo_coeff)
+      opt_pbpe%mos_1%mo_coeff => mo_coeff_1
 
       CALL cp_fm_struct_release(fm_struct)
       NULLIFY (fm_struct)
-      CALL cp_fm_release(mo_coeff_new)
-      DEALLOCATE (mo_coeff_new)
-      NULLIFY (mo_coeff_new)
 
       ! Initialize mos_2
-      ALLOCATE (mo_coeff_new)
+      CALL get_qs_env(qs_env=force_env%sub_force_env(2)%force_env%qs_env, mos=mos)
+      CALL duplicate_mo_set(opt_pbpe%mos_2, mos(1))
+      ! Copy mos_2%mo_coeff to mo_coeff_2
+      CALL get_mo_set(opt_pbpe%mos_2, mo_coeff=mo_coeff)
+      ALLOCATE (mo_coeff_2)
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%nmos(2))
-      CALL cp_fm_create(mo_coeff_new, fm_struct)
-      CALL cp_fm_set_all(mo_coeff_new, 0.0_dp)
-
-      CALL get_qs_env(qs_env=force_env%sub_force_env(2)%force_env%qs_env, mos=mos)
-      CALL get_mo_set(mos(1), nelectron=nelectron, maxocc=maxocc, n_el_f=n_el_f, mo_coeff=mo_coeff)
-
+      CALL cp_fm_create(mo_coeff_2, fm_struct)
+      CALL cp_fm_set_all(mo_coeff_2, 0.0_dp)
       IF (.NOT. opt_pbpe%abs_localization) THEN
-         CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_new, opt_pbpe%naos(2), opt_pbpe%nmos(2), &
-                                 1, 1, opt_pbpe%naos(1) + 1, 1)
+         CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_2, opt_pbpe%naos(2), opt_pbpe%nmos(2), 1, 1, opt_pbpe%naos(1) + 1, 1)
       ELSE
-         CALL cp_fm_to_fm(mo_coeff, mo_coeff_new)
+         CALL cp_fm_to_fm(mo_coeff, mo_coeff_2)
       END IF
-
-      CALL allocate_mo_set(opt_pbpe%mos_2, opt_pbpe%naos_in_pbpe(2), opt_pbpe%nmos(2), &
-                           nelectron, n_el_f, maxocc, 0.0_dp)
-      CALL init_mo_set(opt_pbpe%mos_2, fm_ref=mo_coeff_new, name="Subsystem 2 MO")
+      ! Replace mos_2%mo_coeff with mo_coeff_2
+      CALL set_mo_set(opt_pbpe%mos_2, nao=opt_pbpe%naos_in_pbpe(2))
+      CALL cp_fm_release(opt_pbpe%mos_2%mo_coeff)
+      DEALLOCATE (opt_pbpe%mos_2%mo_coeff)
+      opt_pbpe%mos_2%mo_coeff => mo_coeff_2
 
       CALL cp_fm_struct_release(fm_struct)
       NULLIFY (fm_struct)
-      CALL cp_fm_release(mo_coeff_new)
-      DEALLOCATE (mo_coeff_new)
-      NULLIFY (mo_coeff_new)
 
       CALL cp_blacs_env_release(blacs_env)
 
