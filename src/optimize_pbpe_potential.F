@@ -10,17 +10,18 @@ MODULE optimize_pbpe_potential
                                               cp_blacs_env_release,&
                                               cp_blacs_env_type
    USE cp_control_types,                ONLY: dft_control_type
+   USE cp_dbcsr_operations,             ONLY: copy_dbcsr_to_fm,&
+                                              copy_fm_to_dbcsr
    USE cp_fm_struct,                    ONLY: cp_fm_struct_create,&
                                               cp_fm_struct_release,&
                                               cp_fm_struct_type
-   USE cp_fm_types,                     ONLY: cp_fm_copy_general,&
-                                              cp_fm_create,&
-                                              cp_fm_maxabsval,&
+   USE cp_fm_types,                     ONLY: cp_fm_create,&
                                               cp_fm_release,&
                                               cp_fm_set_all,&
                                               cp_fm_to_fm,&
                                               cp_fm_to_fm_submat,&
                                               cp_fm_type
+   USE dbcsr_api,                       ONLY: dbcsr_p_type
    USE embed_types,                     ONLY: opt_pbpe_pot_type
    USE force_env_types,                 ONLY: force_env_type
    USE input_section_types,             ONLY: section_vals_type,&
@@ -34,7 +35,8 @@ MODULE optimize_pbpe_potential
                                               get_mo_set,&
                                               mo_set_type,&
                                               set_mo_set
-                                              
+   USE qs_rho_types,                    ONLY: qs_rho_get,&
+                                              qs_rho_type
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -128,7 +130,10 @@ CONTAINS
 
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
+      TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_array_1d
+      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: matrix_array_2d
       TYPE(mp_para_env_type), POINTER                    :: para_env
+      TYPE(qs_rho_type), POINTER                         :: rho
 
       CALL get_qs_env(qs_env=force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env, &
                       para_env=para_env)
@@ -144,32 +149,32 @@ CONTAINS
       NULLIFY (opt_pbpe%dm_cluster_beta, opt_pbpe%dm_environment_beta)
       NULLIFY (opt_pbpe%dm_cluster_diff, opt_pbpe%dm_environment_diff)
       NULLIFY (opt_pbpe%dm_cluster_diff_beta, opt_pbpe%dm_environment_diff_beta)
-      NULLIFY (opt_pbpe%S_total, opt_pbpe%KS_total)
-      NULLIFY (opt_pbpe%S_1, opt_pbpe%S_2)
-      NULLIFY (opt_pbpe%KS_1, opt_pbpe%KS_2)
-      NULLIFY (opt_pbpe%KS_1_in_2, opt_pbpe%KS_2_in_1)
-      NULLIFY (opt_pbpe%S_12, opt_pbpe%S_21)
-      NULLIFY (opt_pbpe%KS_12, opt_pbpe%KS_21)
+      NULLIFY (opt_pbpe%s_total, opt_pbpe%ks_total)
+      NULLIFY (opt_pbpe%s_1, opt_pbpe%s_2)
+      NULLIFY (opt_pbpe%ks_1, opt_pbpe%ks_2)
+      NULLIFY (opt_pbpe%ks_1_in_2, opt_pbpe%ks_2_in_1)
+      NULLIFY (opt_pbpe%s_12, opt_pbpe%s_21)
+      NULLIFY (opt_pbpe%ks_12, opt_pbpe%ks_21)
       NULLIFY (opt_pbpe%work1_1, opt_pbpe%work1_2)
       NULLIFY (opt_pbpe%work2_1, opt_pbpe%work2_2)
       NULLIFY (opt_pbpe%ortho_1, opt_pbpe%ortho_2)
-      NULLIFY (opt_pbpe%P_1, opt_pbpe%P_2)
-      NULLIFY (opt_pbpe%P_environment) 
+      NULLIFY (opt_pbpe%projection_1, opt_pbpe%projection_2)
+      NULLIFY (opt_pbpe%projection_environment) 
 
       NULLIFY (fm_struct)
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(3), ncol_global=opt_pbpe%naos_in_pbpe(3))
-      ALLOCATE (opt_pbpe%dm_total, opt_pbpe%dm_total_diff, opt_pbpe%S_total, opt_pbpe%KS_total)
+      ALLOCATE (opt_pbpe%dm_total, opt_pbpe%dm_total_diff, opt_pbpe%s_total, opt_pbpe%ks_total)
       CALL cp_fm_create(opt_pbpe%dm_total, fm_struct, name="dm_total")
       CALL cp_fm_create(opt_pbpe%dm_total_diff, fm_struct, name="dm_total_diff")
-      CALL cp_fm_create(opt_pbpe%S_total, fm_struct, name="S_total")
-      CALL cp_fm_create(opt_pbpe%KS_total, fm_struct, name="KS_total")
+      CALL cp_fm_create(opt_pbpe%s_total, fm_struct, name="s_total")
+      CALL cp_fm_create(opt_pbpe%ks_total, fm_struct, name="ks_total")
 
       CALL cp_fm_set_all(opt_pbpe%dm_total, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_total_diff, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%S_total, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%KS_total, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%s_total, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%ks_total, 0.0_dp)
 
       ! Beta spin counterparts
       IF (opt_pbpe%open_shell_embed) THEN
@@ -187,27 +192,27 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%naos_in_pbpe(1))
-      ALLOCATE (opt_pbpe%dm_1, opt_pbpe%dm_1_diff, opt_pbpe%S_1, opt_pbpe%KS_1, opt_pbpe%KS_1_in_2, & 
-                opt_pbpe%work1_1, opt_pbpe%work2_1, opt_pbpe%ortho_1, opt_pbpe%P_2)
+      ALLOCATE (opt_pbpe%dm_1, opt_pbpe%dm_1_diff, opt_pbpe%s_1, opt_pbpe%ks_1, opt_pbpe%ks_1_in_2, & 
+                opt_pbpe%work1_1, opt_pbpe%work2_1, opt_pbpe%ortho_1, opt_pbpe%projection_2)
       CALL cp_fm_create(opt_pbpe%dm_1, fm_struct, name="dm_1")
       CALL cp_fm_create(opt_pbpe%dm_1_diff, fm_struct, name="dm_1_diff")
-      CALL cp_fm_create(opt_pbpe%S_1, fm_struct, name="S_1")
-      CALL cp_fm_create(opt_pbpe%KS_1, fm_struct, name="KS_1")
-      CALL cp_fm_create(opt_pbpe%KS_1_in_2, fm_struct, name="KS_1_in_2")
+      CALL cp_fm_create(opt_pbpe%s_1, fm_struct, name="s_1")
+      CALL cp_fm_create(opt_pbpe%ks_1, fm_struct, name="ks_1")
+      CALL cp_fm_create(opt_pbpe%ks_1_in_2, fm_struct, name="ks_1_in_2")
       CALL cp_fm_create(opt_pbpe%work1_1, fm_struct, name="work1_1")
       CALL cp_fm_create(opt_pbpe%work2_1, fm_struct, name="work2_1")
       CALL cp_fm_create(opt_pbpe%ortho_1, fm_struct, name="ortho_1")
-      CALL cp_fm_create(opt_pbpe%P_2, fm_struct, name="P_2")
+      CALL cp_fm_create(opt_pbpe%projection_2, fm_struct, name="projection_2")
 
       CALL cp_fm_set_all(opt_pbpe%dm_1, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_1_diff, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%S_1, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%KS_1, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%KS_1_in_2, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%s_1, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%ks_1, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%ks_1_in_2, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%work1_1, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%work2_1, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ortho_1, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%P_2, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%projection_2, 0.0_dp)
 
       ! Beta spin counterparts
       IF (opt_pbpe%open_shell_embed) THEN
@@ -225,27 +230,27 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%naos_in_pbpe(2))
-      ALLOCATE (opt_pbpe%dm_2, opt_pbpe%dm_2_diff, opt_pbpe%S_2, opt_pbpe%KS_2, opt_pbpe%KS_2_in_1, &
-                opt_pbpe%work1_2, opt_pbpe%work2_2, opt_pbpe%ortho_2, opt_pbpe%P_1)
+      ALLOCATE (opt_pbpe%dm_2, opt_pbpe%dm_2_diff, opt_pbpe%s_2, opt_pbpe%ks_2, opt_pbpe%ks_2_in_1, &
+                opt_pbpe%work1_2, opt_pbpe%work2_2, opt_pbpe%ortho_2, opt_pbpe%projection_1)
       CALL cp_fm_create(opt_pbpe%dm_2, fm_struct, name="dm_2")
       CALL cp_fm_create(opt_pbpe%dm_2_diff, fm_struct, name="dm_2_diff")
-      CALL cp_fm_create(opt_pbpe%S_2, fm_struct, name="S_2")
-      CALL cp_fm_create(opt_pbpe%KS_2, fm_struct, name="KS_2")
-      CALL cp_fm_create(opt_pbpe%KS_2_in_1, fm_struct, name="KS_2_in_1")
+      CALL cp_fm_create(opt_pbpe%s_2, fm_struct, name="s_2")
+      CALL cp_fm_create(opt_pbpe%ks_2, fm_struct, name="ks_2")
+      CALL cp_fm_create(opt_pbpe%ks_2_in_1, fm_struct, name="ks_2_in_1")
       CALL cp_fm_create(opt_pbpe%work1_2, fm_struct, name="work1_2")
       CALL cp_fm_create(opt_pbpe%work2_2, fm_struct, name="work2_2")
       CALL cp_fm_create(opt_pbpe%ortho_2, fm_struct, name="ortho_2")
-      CALL cp_fm_create(opt_pbpe%P_1, fm_struct, name="P_1")
+      CALL cp_fm_create(opt_pbpe%projection_1, fm_struct, name="projection_1")
 
       CALL cp_fm_set_all(opt_pbpe%dm_2, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_2_diff, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%S_2, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%KS_2, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%KS_2_in_1, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%s_2, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%ks_2, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%ks_2_in_1, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%work1_2, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%work2_2, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ortho_2, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%P_1, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%projection_1, 0.0_dp)
 
       ! Beta spin counterparts
       IF (opt_pbpe%open_shell_embed) THEN
@@ -263,12 +268,12 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%naos_in_pbpe(2))
-      ALLOCATE (opt_pbpe%S_12, opt_pbpe%KS_12)
-      CALL cp_fm_create(opt_pbpe%S_12, fm_struct, name="S_12")
-      CALL cp_fm_create(opt_pbpe%KS_12, fm_struct, name="KS_12")
+      ALLOCATE (opt_pbpe%s_12, opt_pbpe%ks_12)
+      CALL cp_fm_create(opt_pbpe%s_12, fm_struct, name="s_12")
+      CALL cp_fm_create(opt_pbpe%ks_12, fm_struct, name="ks_12")
 
-      CALL cp_fm_set_all(opt_pbpe%S_12, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%KS_12, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%s_12, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%ks_12, 0.0_dp)
 
       ! Release structure
       CALL cp_fm_struct_release(fm_struct)
@@ -276,12 +281,12 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%naos_in_pbpe(1))
-      ALLOCATE (opt_pbpe%S_21, opt_pbpe%KS_21)
-      CALL cp_fm_create(opt_pbpe%S_21, fm_struct, name="S_21")
-      CALL cp_fm_create(opt_pbpe%KS_21, fm_struct, name="KS_21")
+      ALLOCATE (opt_pbpe%s_21, opt_pbpe%ks_21)
+      CALL cp_fm_create(opt_pbpe%s_21, fm_struct, name="s_21")
+      CALL cp_fm_create(opt_pbpe%ks_21, fm_struct, name="ks_21")
 
-      CALL cp_fm_set_all(opt_pbpe%S_21, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%KS_21, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%s_21, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%ks_21, 0.0_dp)
 
       ! Release structure
       CALL cp_fm_struct_release(fm_struct)
@@ -290,7 +295,24 @@ CONTAINS
       ! Release context
       CALL cp_blacs_env_release(blacs_env)
 
+      ! Initialize density matrices
+      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, rho=rho)
+      CALL qs_rho_get(rho, rho_ao_kp=matrix_array_2d)
+      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%dm_1)
+      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, rho=rho)
+      CALL qs_rho_get(rho, rho_ao_kp=matrix_array_2d)
+      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%dm_2)
+      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, rho=rho)
+      CALL qs_rho_get(rho, rho_ao_kp=matrix_array_2d)
+      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%dm_total)
 
+      ! Initialize overlap matrices
+      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
+      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%s_1)
+      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
+      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%s_2) 
+      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
+      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%s_total) 
 
       ! Associate matrix pointers
       IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
@@ -472,6 +494,15 @@ CONTAINS
       ! Initialize cp_fm matrices
       CALL init_pbpe_matrices(force_env, opt_pbpe)
 
+      ! Get Fermi energy
+      CALL get_mo_set(opt_pbpe%mos_1, mu=opt_pbpe%homo_energy_1)
+      CALL get_mo_set(opt_pbpe%mos_1, mu=opt_pbpe%homo_energy_2)
+      IF (opt_pbpe%homo_energy_1 .GT. opt_pbpe%homo_energy_2) THEN
+         opt_pbpe%fermi_energy = opt_pbpe%homo_energy_1
+      ELSE
+         opt_pbpe%fermi_energy = opt_pbpe%homo_energy_2
+      END IF
+
    END SUBROUTINE prepare_pbpe_opt
 
 ! **************************************************************************************************
@@ -527,15 +558,15 @@ CONTAINS
          DEALLOCATE (opt_pbpe%dm_total_diff)
          NULLIFY (opt_pbpe%dm_total_diff)
       END IF
-      IF (ASSOCIATED(opt_pbpe%S_total)) THEN
-         CALL cp_fm_release(opt_pbpe%S_total)
-         DEALLOCATE (opt_pbpe%S_total)
-         NULLIFY (opt_pbpe%S_total)
+      IF (ASSOCIATED(opt_pbpe%s_total)) THEN
+         CALL cp_fm_release(opt_pbpe%s_total)
+         DEALLOCATE (opt_pbpe%s_total)
+         NULLIFY (opt_pbpe%s_total)
       END IF
-      IF (ASSOCIATED(opt_pbpe%KS_total)) THEN
-         CALL cp_fm_release(opt_pbpe%KS_total)
-         DEALLOCATE (opt_pbpe%KS_total)
-         NULLIFY (opt_pbpe%KS_total)
+      IF (ASSOCIATED(opt_pbpe%ks_total)) THEN
+         CALL cp_fm_release(opt_pbpe%ks_total)
+         DEALLOCATE (opt_pbpe%ks_total)
+         NULLIFY (opt_pbpe%ks_total)
       END IF 
 
       IF (opt_pbpe%open_shell_embed) THEN
@@ -561,20 +592,20 @@ CONTAINS
          DEALLOCATE (opt_pbpe%dm_1_diff)
          NULLIFY (opt_pbpe%dm_1_diff)
       END IF
-      IF (ASSOCIATED(opt_pbpe%S_1)) THEN
-         CALL cp_fm_release(opt_pbpe%S_1)
-         DEALLOCATE (opt_pbpe%S_1)
-         NULLIFY (opt_pbpe%S_1)
+      IF (ASSOCIATED(opt_pbpe%s_1)) THEN
+         CALL cp_fm_release(opt_pbpe%s_1)
+         DEALLOCATE (opt_pbpe%s_1)
+         NULLIFY (opt_pbpe%s_1)
       END IF
-      IF (ASSOCIATED(opt_pbpe%KS_1)) THEN
-         CALL cp_fm_release(opt_pbpe%KS_1)
-         DEALLOCATE (opt_pbpe%KS_1)
-         NULLIFY (opt_pbpe%KS_1)
+      IF (ASSOCIATED(opt_pbpe%ks_1)) THEN
+         CALL cp_fm_release(opt_pbpe%ks_1)
+         DEALLOCATE (opt_pbpe%ks_1)
+         NULLIFY (opt_pbpe%ks_1)
       END IF
-      IF (ASSOCIATED(opt_pbpe%KS_1_in_2)) THEN
-         CALL cp_fm_release(opt_pbpe%KS_1_in_2)
-         DEALLOCATE (opt_pbpe%KS_1_in_2)
-         NULLIFY (opt_pbpe%KS_1_in_2)
+      IF (ASSOCIATED(opt_pbpe%ks_1_in_2)) THEN
+         CALL cp_fm_release(opt_pbpe%ks_1_in_2)
+         DEALLOCATE (opt_pbpe%ks_1_in_2)
+         NULLIFY (opt_pbpe%ks_1_in_2)
       END IF
       IF (ASSOCIATED(opt_pbpe%work1_1)) THEN
          CALL cp_fm_release(opt_pbpe%work1_1)
@@ -591,10 +622,10 @@ CONTAINS
          DEALLOCATE (opt_pbpe%ortho_1)
          NULLIFY (opt_pbpe%ortho_1)
       END IF
-      IF (ASSOCIATED(opt_pbpe%P_2)) THEN
-         CALL cp_fm_release(opt_pbpe%P_2)
-         DEALLOCATE (opt_pbpe%P_2)
-         NULLIFY (opt_pbpe%P_2)
+      IF (ASSOCIATED(opt_pbpe%projection_2)) THEN
+         CALL cp_fm_release(opt_pbpe%projection_2)
+         DEALLOCATE (opt_pbpe%projection_2)
+         NULLIFY (opt_pbpe%projection_2)
       END IF
 
       IF (opt_pbpe%open_shell_embed) THEN
@@ -620,20 +651,20 @@ CONTAINS
          DEALLOCATE (opt_pbpe%dm_2_diff)
          NULLIFY (opt_pbpe%dm_2_diff)
       END IF
-      IF (ASSOCIATED(opt_pbpe%S_2)) THEN
-         CALL cp_fm_release(opt_pbpe%S_2)
-         DEALLOCATE (opt_pbpe%S_2)
-         NULLIFY (opt_pbpe%S_2)
+      IF (ASSOCIATED(opt_pbpe%s_2)) THEN
+         CALL cp_fm_release(opt_pbpe%s_2)
+         DEALLOCATE (opt_pbpe%s_2)
+         NULLIFY (opt_pbpe%s_2)
       END IF
-      IF (ASSOCIATED(opt_pbpe%KS_2)) THEN
-         CALL cp_fm_release(opt_pbpe%KS_2)
-         DEALLOCATE (opt_pbpe%KS_2)
-         NULLIFY (opt_pbpe%KS_2)
+      IF (ASSOCIATED(opt_pbpe%ks_2)) THEN
+         CALL cp_fm_release(opt_pbpe%ks_2)
+         DEALLOCATE (opt_pbpe%ks_2)
+         NULLIFY (opt_pbpe%ks_2)
       END IF
-      IF (ASSOCIATED(opt_pbpe%KS_2_in_1)) THEN
-         CALL cp_fm_release(opt_pbpe%KS_2_in_1)
-         DEALLOCATE (opt_pbpe%KS_2_in_1)
-         NULLIFY (opt_pbpe%KS_2_in_1)
+      IF (ASSOCIATED(opt_pbpe%ks_2_in_1)) THEN
+         CALL cp_fm_release(opt_pbpe%ks_2_in_1)
+         DEALLOCATE (opt_pbpe%ks_2_in_1)
+         NULLIFY (opt_pbpe%ks_2_in_1)
       END IF
       IF (ASSOCIATED(opt_pbpe%work1_2)) THEN
          CALL cp_fm_release(opt_pbpe%work1_2)
@@ -650,10 +681,10 @@ CONTAINS
          DEALLOCATE (opt_pbpe%ortho_2)
          NULLIFY (opt_pbpe%ortho_2)
       END IF
-      IF (ASSOCIATED(opt_pbpe%P_1)) THEN
-         CALL cp_fm_release(opt_pbpe%P_1)
-         DEALLOCATE (opt_pbpe%P_1)
-         NULLIFY (opt_pbpe%P_1)
+      IF (ASSOCIATED(opt_pbpe%projection_1)) THEN
+         CALL cp_fm_release(opt_pbpe%projection_1)
+         DEALLOCATE (opt_pbpe%projection_1)
+         NULLIFY (opt_pbpe%projection_1)
       END IF
 
       IF (opt_pbpe%open_shell_embed) THEN
@@ -669,26 +700,26 @@ CONTAINS
          END IF
       END IF
 
-      IF (ASSOCIATED(opt_pbpe%S_12)) THEN
-         CALL cp_fm_release(opt_pbpe%S_12)
-         DEALLOCATE (opt_pbpe%S_12)
-         NULLIFY (opt_pbpe%S_12)
+      IF (ASSOCIATED(opt_pbpe%s_12)) THEN
+         CALL cp_fm_release(opt_pbpe%s_12)
+         DEALLOCATE (opt_pbpe%s_12)
+         NULLIFY (opt_pbpe%s_12)
       END IF
-      IF (ASSOCIATED(opt_pbpe%KS_12)) THEN
-         CALL cp_fm_release(opt_pbpe%KS_12)
-         DEALLOCATE (opt_pbpe%KS_12)
-         NULLIFY (opt_pbpe%KS_12)
+      IF (ASSOCIATED(opt_pbpe%ks_12)) THEN
+         CALL cp_fm_release(opt_pbpe%ks_12)
+         DEALLOCATE (opt_pbpe%ks_12)
+         NULLIFY (opt_pbpe%ks_12)
       END IF
 
-      IF (ASSOCIATED(opt_pbpe%S_21)) THEN
-         CALL cp_fm_release(opt_pbpe%S_21)
-         DEALLOCATE (opt_pbpe%S_21)
-         NULLIFY (opt_pbpe%S_21)
+      IF (ASSOCIATED(opt_pbpe%s_21)) THEN
+         CALL cp_fm_release(opt_pbpe%s_21)
+         DEALLOCATE (opt_pbpe%s_21)
+         NULLIFY (opt_pbpe%s_21)
       END IF
-      IF (ASSOCIATED(opt_pbpe%KS_21)) THEN
-         CALL cp_fm_release(opt_pbpe%KS_21)
-         DEALLOCATE (opt_pbpe%KS_21)
-         NULLIFY (opt_pbpe%KS_21)
+      IF (ASSOCIATED(opt_pbpe%ks_21)) THEN
+         CALL cp_fm_release(opt_pbpe%ks_21)
+         DEALLOCATE (opt_pbpe%ks_21)
+         NULLIFY (opt_pbpe%ks_21)
       END IF
 
    END SUBROUTINE release_pbpe_matrices

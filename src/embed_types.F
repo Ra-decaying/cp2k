@@ -134,7 +134,7 @@ MODULE embed_types
       LOGICAL                                          :: abs_localization, change_spin, converged, &
                                                           do_kpoints, open_shell_embed
       REAL(KIND=dp)                                    :: conv_max, conv_rmse, &
-                                                          HOMO_energy_A, HOMO_energy_B, &
+                                                          homo_energy_1, homo_energy_2, fermi_energy, &
                                                           norm_D_A_diff, norm_D_B_diff
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)         :: max_diff
       TYPE(cp_fm_type), POINTER                        :: dm_1 => NULL(), dm_2 => NULL(), dm_total => NULL(), &
@@ -145,15 +145,16 @@ MODULE embed_types
                                                           dm_cluster_beta => NULL(), dm_environment_beta => NULL(), &
                                                           dm_cluster_diff => NULL(), dm_environment_diff => NULL(), &
                                                           dm_cluster_diff_beta => NULL(), dm_environment_diff_beta => NULL(), &
-                                                          S_total => NULL(), S_1 => NULL(), S_2 => NULL(), &
-                                                          KS_total => NULL(), KS_1 => NULL(), KS_2 => NULL(), &
-                                                          KS_1_in_2 => NULL(), KS_2_in_1 => NULL(), &
-                                                          S_12 => NULL(), S_21 => NULL(), &
-                                                          KS_12 => NULL(), KS_21 => NULL(), &
+                                                          s_1 => NULL(), s_2 => NULL(), s_total => NULL(), &
+                                                          ks_1 => NULL(), ks_2 => NULL(), ks_total => NULL(), &
+                                                          ks_1_in_2 => NULL(), ks_2_in_1 => NULL(), &
+                                                          s_12 => NULL(), s_21 => NULL(), &
+                                                          ks_12 => NULL(), ks_21 => NULL(), &
                                                           work1_1 => NULL(), work1_2 => NULL(), &
                                                           work2_1 => NULL(), work2_2 => NULL(), &
                                                           ortho_1 => NULL(), ortho_2 => NULL(), &
-                                                          P_1 => NULL(), P_2 => NULL(), P_environment => NULL()
+                                                          projection_1 => NULL(), projection_2 => NULL(), & 
+                                                          projection_environment => NULL()
       TYPE(mo_set_type), POINTER                       :: mos_1 => NULL(), mos_2 => NULL(), &
                                                           mos_cluster => NULL(), mos_environment => NULL()
    END TYPE opt_pbpe_pot_type
