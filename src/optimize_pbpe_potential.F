@@ -12,6 +12,7 @@ MODULE optimize_pbpe_potential
    USE cp_control_types,                ONLY: dft_control_type
    USE cp_dbcsr_operations,             ONLY: copy_dbcsr_to_fm,&
                                               copy_fm_to_dbcsr
+   USE cp_fm_basic_linalg,              ONLY: cp_fm_scale_and_add
    USE cp_fm_struct,                    ONLY: cp_fm_struct_create,&
                                               cp_fm_struct_release,&
                                               cp_fm_struct_type
@@ -28,6 +29,7 @@ MODULE optimize_pbpe_potential
                                               section_vals_val_get
    USE kinds,                           ONLY: dp
    USE message_passing,                 ONLY: mp_para_env_type
+   USE parallel_gemm_api,               ONLY: parallel_gemm
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
    USE qs_mo_types,                     ONLY: deallocate_mo_set,&
@@ -37,6 +39,7 @@ MODULE optimize_pbpe_potential
                                               set_mo_set
    USE qs_rho_types,                    ONLY: qs_rho_get,&
                                               qs_rho_type
+   USE qs_scf_methods,                  ONLY: eigensolver_symm
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -48,6 +51,43 @@ MODULE optimize_pbpe_potential
    PUBLIC :: check_pbpe_system, prepare_pbpe_opt, release_pbpe_opt
 
 CONTAINS
+
+! **************************************************************************************************
+!> \brief ...
+!> \param force_env ...
+! **************************************************************************************************
+   SUBROUTINE build_pbpe_sys_dm(opt_pbpe, system_num)
+      TYPE(opt_pbpe_type), POINTER                       :: opt_pbpe
+      INTEGER                                            :: system_num
+
+      INTEGER                                            :: homo, nao
+      TYPE(cp_fm_type), POINTER                          :: mo_coeff
+      TYPE(KIND=dp)                                      :: coeff
+
+      CPASSERT((sys_num .GT. 0) AND (sys_num .LT. 4))
+      IF (system_num .EQ. 1) THEN
+         CALL get_mo_set(mo_set=opt_pbpe%mos_1(1), mo_coeff=mo_coeff, nao=nao, homo=homo)
+         CALL parallel_gemm(transa="N", transb="T", m=nao, n=nao, k=homo, &
+                            alpha=coeff, matrix_a=mo_coeff, matrix_b=mo_coeff, &
+                            beta=0.0_dp, matrix_c=opt_pbpe%dm_1)
+      ELSE IF (system_num .EQ. 2) THEN
+         CALL get_mo_set(mo_set=opt_pbpe%mos_2(1), mo_coeff=mo_coeff, nao=nao, homo=homo)
+         CALL parallel_gemm(transa="N", transb="T", m=nao, n=nao, k=homo, &
+                            alpha=coeff, matrix_a=mo_coeff, matrix_b=mo_coeff, &
+                            beta=0.0_dp, matrix_c=opt_pbpe%dm_2)
+      ELSE
+         IF (opt_pbpe%abs_localization) THEN
+            CALL cp_fm_to_fm_submat(opt_pbpe%dm_1, opt_pbpe%dm_total, opt_pbpe%naos(1), opt_pbpe%naos(1),
+                                    1, 1, 1, 1)
+            CALL cp_fm_to_fm_submat(opt_pbpe%dm_2, opt_pbpe%dm_total, opt_pbpe%naos(2), opt_pbpe%naos(2),
+                                    1, 1, opt_pbpe%naos(2) + 1, opt_pbpe%naos(2) + 1)
+         ELSE
+            CALL cp_fm_to_fm(opt_pbpe%dm_1, opt_pbpe%dm_total)
+            CALL cp_fm_scale_and_add(opt_pbpe%total, 1.0, opt_pbpe%dm_2, 1.0)
+         END IF
+      END IF
+
+   END SUBROUTINE
 
 ! **************************************************************************************************
 !> \brief ...
@@ -296,23 +336,28 @@ CONTAINS
       CALL cp_blacs_env_release(blacs_env)
 
       ! Initialize density matrices
-      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, rho=rho)
-      CALL qs_rho_get(rho, rho_ao_kp=matrix_array_2d)
-      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%dm_1)
-      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, rho=rho)
-      CALL qs_rho_get(rho, rho_ao_kp=matrix_array_2d)
-      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%dm_2)
-      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, rho=rho)
-      CALL qs_rho_get(rho, rho_ao_kp=matrix_array_2d)
-      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%dm_total)
+      CALL build_pbpe_sys_dm(1)
+      CALL build_pbpe_sys_dm(2)
+      CALL build_pbpe_sys_dm(3)
 
       ! Initialize overlap matrices
-      CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
-      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%s_1)
-      CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
-      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%s_2) 
       CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
-      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%s_total) 
+      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%s_total)
+      IF (opt_pbpe%abs_localization) THEN
+         CALL get_qs_env(force_env%sub_force_env(1)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
+         CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%s_1)
+         CALL get_qs_env(force_env%sub_force_env(2)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
+         CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%s_2)
+      ELSE
+         CALL cp_fm_to_fm(opt_pbpe%s_total, opt_pbpe%s_1)
+         CALL cp_fm_to_fm(opt_pbpe%s_total, opt_pbpe%s_2)
+      END IF
+
+      ! Prepare for diagonalization
+      CALL cp_fm_to_fm(opt_pbpe%s_1, opt_pbpe%ortho_1)
+      CALL cp_fm_power(opt_pbpe%ortho_1, opt_pbpe%work2_1, -0.5_dp, 1.0E-5_dp, 0)
+      CALL cp_fm_to_fm(opt_pbpe%s_1, opt_pbpe%ortho_1)
+      CALL cp_fm_power(opt_pbpe%ortho_1, opt_pbpe%work2_1, -0.5_dp, 1.0E-5_dp, 0)
 
       ! Associate matrix pointers
       IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
@@ -367,16 +412,17 @@ CONTAINS
 
       NULLIFY (opt_pbpe%mos_1, opt_pbpe%mos_2, opt_pbpe%mos_cluster, opt_pbpe%mos_environment)
 
-      ALLOCATE (opt_pbpe%mos_1, opt_pbpe%mos_2)
+      ALLOCATE (opt_pbpe%mos_1(1))
+      ALLOCATE (opt_pbpe%mos_2(1))
 
       NULLIFY (mo_coeff_1, mo_coeff_2)
       NULLIFY (fm_struct)
 
       ! Initialize mos_1
       CALL get_qs_env(qs_env=force_env%sub_force_env(1)%force_env%qs_env, mos=mos)
-      CALL duplicate_mo_set(opt_pbpe%mos_1, mos(1))
-      ! Copy mos_1%mo_coeff to mo_coeff_1
-      CALL get_mo_set(opt_pbpe%mos_1, mo_coeff=mo_coeff)
+      CALL duplicate_mo_set(opt_pbpe%mos_1(1), mos(1))
+      ! Copy mos_1(1)%mo_coeff to mo_coeff_1
+      CALL get_mo_set(opt_pbpe%mos_1(1), mo_coeff=mo_coeff)
       ALLOCATE (mo_coeff_1)
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%nmos(1))
@@ -387,20 +433,20 @@ CONTAINS
       ELSE
          CALL cp_fm_to_fm(mo_coeff, mo_coeff_1)
       END IF
-      ! Replace mos_1%mo_coeff with mo_coeff_1
-      CALL set_mo_set(opt_pbpe%mos_1, nao=opt_pbpe%naos_in_pbpe(1))
-      CALL cp_fm_release(opt_pbpe%mos_1%mo_coeff)
-      DEALLOCATE (opt_pbpe%mos_1%mo_coeff)
-      opt_pbpe%mos_1%mo_coeff => mo_coeff_1
+      ! Replace mos_1(1)%mo_coeff with mo_coeff_1
+      CALL set_mo_set(opt_pbpe%mos_1(1), nao=opt_pbpe%naos_in_pbpe(1))
+      CALL cp_fm_release(opt_pbpe%mos_1(1)%mo_coeff)
+      DEALLOCATE (opt_pbpe%mos_1(1)%mo_coeff)
+      opt_pbpe%mos_1(1)%mo_coeff => mo_coeff_1
 
       CALL cp_fm_struct_release(fm_struct)
       NULLIFY (fm_struct)
 
       ! Initialize mos_2
       CALL get_qs_env(qs_env=force_env%sub_force_env(2)%force_env%qs_env, mos=mos)
-      CALL duplicate_mo_set(opt_pbpe%mos_2, mos(1))
-      ! Copy mos_2%mo_coeff to mo_coeff_2
-      CALL get_mo_set(opt_pbpe%mos_2, mo_coeff=mo_coeff)
+      CALL duplicate_mo_set(opt_pbpe%mos_2(1), mos(1))
+      ! Copy mos_2(1)%mo_coeff to mo_coeff_2
+      CALL get_mo_set(opt_pbpe%mos_2(1), mo_coeff=mo_coeff)
       ALLOCATE (mo_coeff_2)
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%nmos(2))
@@ -411,11 +457,11 @@ CONTAINS
       ELSE
          CALL cp_fm_to_fm(mo_coeff, mo_coeff_2)
       END IF
-      ! Replace mos_2%mo_coeff with mo_coeff_2
-      CALL set_mo_set(opt_pbpe%mos_2, nao=opt_pbpe%naos_in_pbpe(2))
-      CALL cp_fm_release(opt_pbpe%mos_2%mo_coeff)
-      DEALLOCATE (opt_pbpe%mos_2%mo_coeff)
-      opt_pbpe%mos_2%mo_coeff => mo_coeff_2
+      ! Replace mos_2(1)%mo_coeff with mo_coeff_2
+      CALL set_mo_set(opt_pbpe%mos_2(1), nao=opt_pbpe%naos_in_pbpe(2))
+      CALL cp_fm_release(opt_pbpe%mos_2(1)%mo_coeff)
+      DEALLOCATE (opt_pbpe%mos_2(1)%mo_coeff)
+      opt_pbpe%mos_2(1)%mo_coeff => mo_coeff_2
 
       CALL cp_fm_struct_release(fm_struct)
       NULLIFY (fm_struct)
@@ -495,8 +541,8 @@ CONTAINS
       CALL init_pbpe_matrices(force_env, opt_pbpe)
 
       ! Get Fermi energy
-      CALL get_mo_set(opt_pbpe%mos_1, mu=opt_pbpe%homo_energy_1)
-      CALL get_mo_set(opt_pbpe%mos_1, mu=opt_pbpe%homo_energy_2)
+      CALL get_mo_set(opt_pbpe%mos_1(1), mu=opt_pbpe%homo_energy_1)
+      CALL get_mo_set(opt_pbpe%mos_2(1), mu=opt_pbpe%homo_energy_2)
       IF (opt_pbpe%homo_energy_1 .GT. opt_pbpe%homo_energy_2) THEN
          opt_pbpe%fermi_energy = opt_pbpe%homo_energy_1
       ELSE
@@ -735,12 +781,12 @@ CONTAINS
       NULLIFY (opt_pbpe%mos_environment)
 
       IF (ASSOCIATED(opt_pbpe%mos_1)) THEN
-         CALL deallocate_mo_set(opt_pbpe%mos_1)
+         CALL deallocate_mo_set(opt_pbpe%mos_1(1))
          DEALLOCATE (opt_pbpe%mos_1)
          NULLIFY (opt_pbpe%mos_1)
       END IF
       IF (ASSOCIATED(opt_pbpe%mos_2)) THEN
-         CALL deallocate_mo_set(opt_pbpe%mos_2)
+         CALL deallocate_mo_set(opt_pbpe%mos_2(1))
          DEALLOCATE (opt_pbpe%mos_2)
          NULLIFY (opt_pbpe%mos_2)
       END IF
