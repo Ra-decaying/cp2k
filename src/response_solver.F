@@ -32,12 +32,14 @@ MODULE response_solver
                                               cp_dbcsr_sm_fm_multiply,&
                                               dbcsr_allocate_matrix_set,&
                                               dbcsr_deallocate_matrix_set
-   USE cp_fm_struct,                    ONLY: cp_fm_struct_type
+   USE cp_fm_struct,                    ONLY: cp_fm_struct_create,&
+                                              cp_fm_struct_release,&
+                                              cp_fm_struct_type
    USE cp_fm_types,                     ONLY: cp_fm_create,&
-                                              cp_fm_get_info,&
                                               cp_fm_init_random,&
                                               cp_fm_release,&
                                               cp_fm_set_all,&
+                                              cp_fm_to_fm,&
                                               cp_fm_type
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
                                               cp_logger_get_default_unit_nr,&
@@ -176,14 +178,14 @@ CONTAINS
       CHARACTER(LEN=*), PARAMETER :: routineN = 'response_calculation'
 
       INTEGER                                            :: handle, homo, ispin, nao, nao_aux, nmo, &
-                                                            nspins, solver_method, unit_nr
+                                                            nocc, nspins, solver_method, unit_nr
       LOGICAL                                            :: should_stop
       REAL(KIND=dp)                                      :: focc
       TYPE(admm_type), POINTER                           :: admm_env
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
       TYPE(cp_fm_type)                                   :: sv
-      TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:)        :: cpmos
+      TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:)        :: cpmos, mo_occ
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s, matrix_s_aux, rho_ao
@@ -344,23 +346,31 @@ CONTAINS
          ! Sign is changed in linres_solver!
          ! Projector Q applied in linres_solver!
          CALL get_qs_env(qs_env, mos=mos)
-         ALLOCATE (cpmos(nspins))
+         ALLOCATE (cpmos(nspins), mo_occ(nspins))
          DO ispin = 1, nspins
-            CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff)
-            CALL cp_fm_get_info(mo_coeff, matrix_struct=fm_struct)
+            CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff, homo=nocc)
+            NULLIFY (fm_struct)
+            CALL cp_fm_struct_create(fm_struct, ncol_global=nocc, &
+                                     template_fmstruct=mo_coeff%matrix_struct)
             CALL cp_fm_create(cpmos(ispin), fm_struct)
             CALL cp_fm_set_all(cpmos(ispin), 0.0_dp)
+            CALL cp_fm_create(mo_occ(ispin), fm_struct)
+            CALL cp_fm_to_fm(mo_coeff, mo_occ(ispin), nocc)
+            CALL cp_fm_struct_release(fm_struct)
          END DO
 
          focc = 2.0_dp
          IF (nspins == 1) focc = 4.0_dp
          DO ispin = 1, nspins
-            CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff, nmo=nmo)
-            CALL cp_fm_set_all(cpmos(ispin), 0.0_dp)
-            CALL cp_dbcsr_sm_fm_multiply(ec_env%matrix_hz(ispin)%matrix, mo_coeff, &
-                                         cpmos(ispin), nmo, &
+            CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff, homo=nocc)
+            CALL cp_dbcsr_sm_fm_multiply(ec_env%matrix_hz(ispin)%matrix, mo_occ(ispin), &
+                                         cpmos(ispin), nocc, &
                                          alpha=focc, beta=0.0_dp)
          END DO
+         DO ispin = 1, nspins
+            CALL cp_fm_release(mo_occ(ispin))
+         END DO
+         DEALLOCATE (mo_occ)
 
          CALL response_equation_new(qs_env, p_env, cpmos, unit_nr)
 
@@ -546,7 +556,7 @@ CONTAINS
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'response_equation_new'
 
-      INTEGER                                            :: handle, ispin, nao, nao_aux, nspins
+      INTEGER                                            :: handle, ispin, nao, nao_aux, nocc, nspins
       LOGICAL                                            :: should_stop
       TYPE(admm_type), POINTER                           :: admm_env
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
@@ -569,11 +579,15 @@ CONTAINS
       ! psi1 : The "perturbed" linear response orbitals
       ALLOCATE (psi0(nspins), psi1(nspins))
       DO ispin = 1, nspins
-         CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff)
-         psi0(ispin) = mo_coeff
-         CALL cp_fm_get_info(mo_coeff, matrix_struct=fm_struct)
+         CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff, homo=nocc)
+         NULLIFY (fm_struct)
+         CALL cp_fm_struct_create(fm_struct, ncol_global=nocc, &
+                                  template_fmstruct=mo_coeff%matrix_struct)
+         CALL cp_fm_create(psi0(ispin), fm_struct)
+         CALL cp_fm_to_fm(mo_coeff, psi0(ispin), nocc)
          CALL cp_fm_create(psi1(ispin), fm_struct)
          CALL cp_fm_set_all(psi1(ispin), 0.0_dp)
+         CALL cp_fm_struct_release(fm_struct)
       END DO
 
       should_stop = .FALSE.
@@ -617,6 +631,7 @@ CONTAINS
       DO ispin = 1, nspins
          CALL cp_fm_release(cpmos(ispin))
          CALL cp_fm_release(psi1(ispin))
+         CALL cp_fm_release(psi0(ispin))
       END DO
       DEALLOCATE (psi0, psi1)
 
@@ -643,7 +658,7 @@ CONTAINS
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'response_equation'
 
-      INTEGER                                            :: handle, ispin, nao, nao_aux, nspins
+      INTEGER                                            :: handle, ispin, nao, nao_aux, nocc, nspins
       LOGICAL                                            :: should_stop
       TYPE(admm_type), POINTER                           :: admm_env
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
@@ -697,11 +712,15 @@ CONTAINS
       ! psi1 : The "perturbed" linear response orbitals
       ALLOCATE (psi0(nspins), psi1(nspins))
       DO ispin = 1, nspins
-         CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff)
-         psi0(ispin) = mo_coeff
-         CALL cp_fm_get_info(mo_coeff, matrix_struct=fm_struct)
+         CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff, homo=nocc)
+         NULLIFY (fm_struct)
+         CALL cp_fm_struct_create(fm_struct, ncol_global=nocc, &
+                                  template_fmstruct=mo_coeff%matrix_struct)
+         CALL cp_fm_create(psi0(ispin), fm_struct)
+         CALL cp_fm_to_fm(mo_coeff, psi0(ispin), nocc)
          CALL cp_fm_create(psi1(ispin), fm_struct)
          CALL cp_fm_set_all(psi1(ispin), 0.0_dp)
+         CALL cp_fm_struct_release(fm_struct)
       END DO
 
       should_stop = .FALSE.
@@ -765,6 +784,7 @@ CONTAINS
                                   p_env%w1(ispin)%matrix)
       END DO
       DO ispin = 1, nspins
+         CALL cp_fm_release(psi0(ispin))
          CALL cp_fm_release(psi1(ispin))
       END DO
       DEALLOCATE (psi0, psi1)
@@ -811,7 +831,7 @@ CONTAINS
 
       INTEGER                                            :: handle, iounit, ispin, mspin, n_rep_hf, &
                                                             nao, nao_aux, natom, nder, nimages, &
-                                                            nspins
+                                                            nocc, nspins
       INTEGER, DIMENSION(:, :, :), POINTER               :: cell_to_index
       LOGICAL :: debug_forces, debug_stress, distribute_fock_matrix, do_ex, do_hfx, gapw, gapw_xc, &
          hfx_treat_lsd_in_core, resp_only, s_mstruct_changed, use_virial
@@ -2036,8 +2056,9 @@ CONTAINS
          IF (nspins == 1) focc = 2.0_dp
          CALL get_qs_env(qs_env, mos=mos)
          DO ispin = 1, nspins
+            CALL get_mo_set(mo_set=mos(ispin), homo=nocc)
             CALL calculate_whz_matrix(mos(ispin)%mo_coeff, matrix_hz(ispin)%matrix, &
-                                      matrix_wz(ispin)%matrix, focc)
+                                      matrix_wz(ispin)%matrix, focc, nocc)
          END DO
       END IF
       IF (nspins == 2) THEN
@@ -2110,7 +2131,7 @@ CONTAINS
 
       INTEGER                                            :: atom_a, handle, iatom, ikind, iounit, &
                                                             is, ispin, na, natom, natorb, nimages, &
-                                                            nkind, ns, nsgf, nspins
+                                                            nkind, nocc, ns, nsgf, nspins
       INTEGER, DIMENSION(25)                             :: lao
       INTEGER, DIMENSION(5)                              :: occ
       LOGICAL                                            :: debug_forces, do_ex, use_virial
@@ -2259,8 +2280,9 @@ CONTAINS
       IF (nspins == 1) focc = 1.0_dp
       CALL get_qs_env(qs_env, mos=mos)
       DO ispin = 1, nspins
+         CALL get_mo_set(mo_set=mos(ispin), homo=nocc)
          CALL calculate_whz_matrix(mos(ispin)%mo_coeff, matrix_hz(ispin)%matrix, &
-                                   matrix_wz(ispin)%matrix, focc)
+                                   matrix_wz(ispin)%matrix, focc, nocc)
       END DO
       IF (nspins == 2) THEN
          CALL dbcsr_add(matrix_wz(1)%matrix, matrix_wz(2)%matrix, &

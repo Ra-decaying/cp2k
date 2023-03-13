@@ -56,10 +56,8 @@ MODULE cp2k_debug
    USE qs_environment_types,            ONLY: get_qs_env
    USE qs_kind_types,                   ONLY: qs_kind_type
    USE string_utilities,                ONLY: uppercase
-   USE virial_types,                    ONLY: cp_virial,&
-                                              virial_set,&
-                                              virial_type,&
-                                              zero_virial
+   USE virial_types,                    ONLY: virial_set,&
+                                              virial_type
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -204,8 +202,7 @@ CONTAINS
                                                 calc_stress_tensor=.TRUE.)
 
                ! Retrieve the analytical virial
-               CALL zero_virial(virial_analytical)
-               CALL cp_virial(virial, virial_analytical)
+               virial_analytical = virial
 
                ! Debug stress tensor (numerical vs analytical)
                CALL virial_set(virial, pv_numer=.TRUE.)
@@ -213,8 +210,7 @@ CONTAINS
 
                ! Retrieve the numerical virial
                CALL cp_subsys_get(subsys, virial=virial)
-               CALL zero_virial(virial_numerical)
-               CALL cp_virial(virial, virial_numerical)
+               virial_numerical = virial
 
                ! Print results
                IF (iw > 0) THEN
@@ -472,7 +468,7 @@ CONTAINS
                WRITE (UNIT=iw, FMT="((T2,A))") &
                   "DEBUG|========================================================================="
                WRITE (UNIT=iw, FMT="(T2,A,T61,E20.12)") 'DIPOLE : CheckSum  =', SUM(dipole_moment)
-               IF (ANY(ABS(err(1:3)) > 0.1_dp)) THEN
+               IF (ANY(ABS(err(1:3)) > maxerr/10._dp)) THEN
                   message = "A mismatch between analytical and numerical dipoles "// &
                             "has been detected. Check the implementation of the "// &
                             "analytical dipole calculation"
