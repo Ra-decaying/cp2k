@@ -13,6 +13,7 @@ MODULE optimize_pbpe_potential
    USE cp_dbcsr_operations,             ONLY: copy_dbcsr_to_fm,&
                                               copy_fm_to_dbcsr
    USE cp_fm_basic_linalg,              ONLY: cp_fm_scale_and_add
+   USE cp_fm_diag,                      ONLY: cp_fm_power
    USE cp_fm_struct,                    ONLY: cp_fm_struct_create,&
                                               cp_fm_struct_release,&
                                               cp_fm_struct_type
@@ -55,16 +56,17 @@ CONTAINS
 ! **************************************************************************************************
 !> \brief ...
 !> \param force_env ...
+!> \param system_num ...
 ! **************************************************************************************************
    SUBROUTINE build_pbpe_sys_dm(opt_pbpe, system_num)
-      TYPE(opt_pbpe_type), POINTER                       :: opt_pbpe
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       INTEGER                                            :: system_num
 
       INTEGER                                            :: homo, nao
+      REAL(KIND=dp)                                      :: coeff
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
-      TYPE(KIND=dp)                                      :: coeff
 
-      CPASSERT((sys_num .GT. 0) AND (sys_num .LT. 4))
+      CPASSERT((system_num .GT. 0) .AND. (system_num .LT. 4))
       IF (system_num .EQ. 1) THEN
          CALL get_mo_set(mo_set=opt_pbpe%mos_1(1), mo_coeff=mo_coeff, nao=nao, homo=homo)
          CALL parallel_gemm(transa="N", transb="T", m=nao, n=nao, k=homo, &
@@ -77,13 +79,13 @@ CONTAINS
                             beta=0.0_dp, matrix_c=opt_pbpe%dm_2)
       ELSE
          IF (opt_pbpe%abs_localization) THEN
-            CALL cp_fm_to_fm_submat(opt_pbpe%dm_1, opt_pbpe%dm_total, opt_pbpe%naos(1), opt_pbpe%naos(1),
+            CALL cp_fm_to_fm_submat(opt_pbpe%dm_1, opt_pbpe%dm_total, opt_pbpe%naos(1), opt_pbpe%naos(1), &
                                     1, 1, 1, 1)
-            CALL cp_fm_to_fm_submat(opt_pbpe%dm_2, opt_pbpe%dm_total, opt_pbpe%naos(2), opt_pbpe%naos(2),
+            CALL cp_fm_to_fm_submat(opt_pbpe%dm_2, opt_pbpe%dm_total, opt_pbpe%naos(2), opt_pbpe%naos(2), &
                                     1, 1, opt_pbpe%naos(2) + 1, opt_pbpe%naos(2) + 1)
          ELSE
             CALL cp_fm_to_fm(opt_pbpe%dm_1, opt_pbpe%dm_total)
-            CALL cp_fm_scale_and_add(opt_pbpe%total, 1.0, opt_pbpe%dm_2, 1.0)
+            CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%dm_total, 1.0_dp, opt_pbpe%dm_2)
          END IF
       END IF
 
@@ -168,6 +170,7 @@ CONTAINS
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
+      INTEGER                                            :: n_dep_1, n_dep_2
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_array_1d
@@ -336,9 +339,9 @@ CONTAINS
       CALL cp_blacs_env_release(blacs_env)
 
       ! Initialize density matrices
-      CALL build_pbpe_sys_dm(1)
-      CALL build_pbpe_sys_dm(2)
-      CALL build_pbpe_sys_dm(3)
+      CALL build_pbpe_sys_dm(opt_pbpe, 1)
+      CALL build_pbpe_sys_dm(opt_pbpe, 2)
+      CALL build_pbpe_sys_dm(opt_pbpe, 3)
 
       ! Initialize overlap matrices
       CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
@@ -354,10 +357,12 @@ CONTAINS
       END IF
 
       ! Prepare for diagonalization
+      n_dep_1 = 0
+      n_dep_2 = 0
       CALL cp_fm_to_fm(opt_pbpe%s_1, opt_pbpe%ortho_1)
-      CALL cp_fm_power(opt_pbpe%ortho_1, opt_pbpe%work2_1, -0.5_dp, 1.0E-5_dp, 0)
+      CALL cp_fm_power(opt_pbpe%ortho_1, opt_pbpe%work2_1, -0.5_dp, 1.0E-5_dp, n_dep_1)
       CALL cp_fm_to_fm(opt_pbpe%s_1, opt_pbpe%ortho_1)
-      CALL cp_fm_power(opt_pbpe%ortho_1, opt_pbpe%work2_1, -0.5_dp, 1.0E-5_dp, 0)
+      CALL cp_fm_power(opt_pbpe%ortho_1, opt_pbpe%work2_1, -0.5_dp, 1.0E-5_dp, n_dep_2)
 
       ! Associate matrix pointers
       IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
