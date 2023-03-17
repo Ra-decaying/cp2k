@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2021 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2023 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -33,6 +33,8 @@ MODULE optimize_pbpe_potential
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
+   USE qs_ks_methods,                   ONLY: qs_ks_update_qs_env
+   USE qs_ks_types,                     ONLY: qs_ks_env_type
    USE qs_mo_types,                     ONLY: deallocate_mo_set,&
                                               duplicate_mo_set,&
                                               get_mo_set,&
@@ -40,7 +42,9 @@ MODULE optimize_pbpe_potential
                                               set_mo_set
    USE qs_rho_types,                    ONLY: qs_rho_get,&
                                               qs_rho_type
+   USE qs_scf_loop_utils,               ONLY: qs_scf_rho_update
    USE qs_scf_methods,                  ONLY: eigensolver_symm
+   USE qs_scf_types,                    ONLY: qs_scf_env_type
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -49,7 +53,7 @@ MODULE optimize_pbpe_potential
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'optimize_pbpe_potential'
 
-   PUBLIC :: check_pbpe_system, prepare_pbpe_opt, release_pbpe_opt
+   PUBLIC :: check_pbpe_system, prepare_pbpe_opt, release_pbpe_opt, update_pbpe_density_and_ks_qs_env
 
 CONTAINS
 
@@ -60,7 +64,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE build_pbpe_sys_dm(opt_pbpe, system_num)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
-      INTEGER                                            :: system_num
+      INTEGER, INTENT(IN)                                :: system_num
 
       INTEGER                                            :: homo, nao
       REAL(KIND=dp)                                      :: coeff
@@ -89,7 +93,29 @@ CONTAINS
          END IF
       END IF
 
-   END SUBROUTINE
+   END SUBROUTINE build_pbpe_sys_dm
+
+! **************************************************************************************************
+!> \brief
+!> \param 
+! **************************************************************************************************
+   SUBROUTINE calculate_projected_ks_matrix(opt_pbpe, qs_env, subsys_num)
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+      TYPE(qs_environment_type), POINTER                 :: qs_env
+      INTEGER, INTENT(IN)                                :: subsys_num
+
+      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: matrix_ks_kp
+      
+      CALL get_qs_env(qs_env, matrix_ks_kp=matrix_ks_kp)
+      CALL copy_dbcsr_to_fm(matrix_ks_kp(1, 1)%matrix, opt_pbpe%ks_total)
+
+      IF (opt_pbpe%abs_localization) THEN
+         IF (subsys_num .EQ. 1) THEN
+         ELSE IF (subsys_num .EQ. 2) THEN
+         END IF
+      END IF
+
+   END SUBROUTINE calculate_projected_ks_matrix
 
 ! **************************************************************************************************
 !> \brief ...
@@ -814,5 +840,27 @@ CONTAINS
       DEALLOCATE (opt_pbpe%nmos)
 
    END SUBROUTINE release_pbpe_opt
+
+! **************************************************************************************************
+!> \brief ...
+!> \param density_matrix ...
+!> \param qs_env ...
+! **************************************************************************************************
+   SUBROUTINE update_pbpe_density_and_ks_qs_env(density_matrix, qs_env)
+   TYPE(cp_fm_type), INTENT(IN)                          :: density_matrix
+   TYPE(qs_environment_type), POINTER                    :: qs_env
+
+   TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER           :: rho_ao_kp
+   TYPE(qs_ks_env_type), POINTER                         :: ks_env
+   TYPE(qs_rho_type), POINTER                            :: rho
+   TYPE(qs_scf_env_type), POINTER                        :: scf_env 
+
+   CALL get_qs_env(qs_env, ks_env=ks_env, rho=rho, scf_env=scf_env)
+   CALL qs_rho_get(rho, rho_ao_kp=rho_ao_kp)
+   CALL copy_fm_to_dbcsr(density_matrix, rho_ao_kp(1, 1)%matrix)
+   CALL qs_scf_rho_update(rho, qs_env, scf_env, ks_env, .FALSE.)
+   CALL qs_ks_update_qs_env(qs_env, just_energy=.FALSE., calculate_forces=.FALSE., print_active=.TRUE.)
+
+   END SUBROUTINE update_pbpe_density_and_ks_qs_env
 
 END MODULE optimize_pbpe_potential

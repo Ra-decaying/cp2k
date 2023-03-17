@@ -124,7 +124,8 @@ MODULE force_env_methods
         understand_spin_states
    USE optimize_pbpe_potential,         ONLY: check_pbpe_system,&
                                               prepare_pbpe_opt,&
-                                              release_pbpe_opt
+                                              release_pbpe_opt,&
+                                              update_pbpe_density_and_ks_qs_env
    USE particle_list_types,             ONLY: particle_list_p_type,&
                                               particle_list_type
    USE physcon,                         ONLY: debye
@@ -2153,43 +2154,15 @@ CONTAINS
       LOGICAL                                            :: do_kpoints, absolute_localization
       REAL(KIND=dp)                                      :: cluster_energy, fermi_energy, &
                                                             HOMO_energy_A, HOMO_energy_B, &
-                                                            norm_D_A_diff, norm_D_B_diff                
-      REAL(KIND=dp), DIMENSION(:), POINTER               :: rhs
-!      TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
-!      TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-!      TYPE(cp_fm_type), POINTER                          :: fm_S_ref, fm_S_AB, &
-!                                                            fm_KS_ref, fm_KS_AB, &
-!                                                            fm_S_A, fm_S_B, &
-!                                                            fm_ortho_A, fm_ortho_B, &
-!                                                            fm_work1_A, fm_work1_B, &
-!                                                            fm_work2_A, fm_work2_B, &
-!                                                            fm_KS_AA, fm_KS_BB, &
-!                                                            fm_D_A_interface, fm_D_B_interface, & 
-!                                                            fm_D_A_old, fm_D_B_old, &
-!                                                            fm_D_A_new, fm_D_B_new, &
-!                                                            fm_D_A_diff, fm_D_B_diff, &
-!                                                            fm_D_ref, fm_D_ref_old, &
-!                                                            fm_P_A, fm_P_B, &
-!                                                            fm_KS_A_in_B, fm_KS_B_in_A, &
-!                                                            fm_occupied_MO_A, fm_occupied_MO_B, &
-!                                                            fm_tmp_1, fm_tmp_2, fm_tmp_3, &
-!                                                            fm_tmp_4, fm_tmp_5, fm_tmp_6, &
-!                                                            fm_u_ghost, fm_test
+                                                            norm_D_A_diff, norm_D_B_diff
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(mp_para_env_type), POINTER                    :: para_env
-!      TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: dbcsr_S_kp_ref, dbcsr_S_kp_AB, &
-!                                                            dbcsr_KS_kp_ref, dbcsr_KS_kp_AB, &
-!                                                            dbcsr_S_kp_A, dbcsr_S_kp_B, &
-!                                                            dbcsr_D_kp_A, dbcsr_D_kp_B, dbcsr_D_kp_ref
       TYPE(dft_control_type), POINTER                    :: dft_control
-!      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos, mo_set_A, mo_set_B, mo_set_ref
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       TYPE(qs_energy_type), POINTER                      :: energy
 !      TYPE(qs_ks_env_type), POINTER                      :: ks_env_ref
       TYPE(qs_rho_type), POINTER                         :: rho, subsys_rho, &
                                                             rho_A, rho_B, rho_ref
-!      TYPE(qs_scf_env_type), POINTER                     :: scf_env_A, scf_env_B, scf_env_ref
-!      TYPE(scf_control_type), POINTER                    :: scf_control_A, scf_control_B, scf_control_ref
       TYPE(section_vals_type), POINTER                   :: dft_section, input, opt_pbpe_section
 
       CALL timeset(routineN, handle)
@@ -2224,6 +2197,15 @@ CONTAINS
 
       ! Prepare for the potential optimization
       CALL prepare_pbpe_opt(force_env, opt_pbpe, opt_pbpe_section)
+
+      ! Low-level iterative optimization
+      DO i_iter = 1, opt_pbpe%n_iter
+
+         ! Update total density matrix and Kohn-Sham matrix
+         CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_total, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env)
+
+
+      END DO
 
       CALL release_pbpe_opt(opt_pbpe)
 
