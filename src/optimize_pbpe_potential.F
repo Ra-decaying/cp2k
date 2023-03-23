@@ -459,11 +459,8 @@ CONTAINS
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%nmos(1))
       CALL cp_fm_create(mo_coeff_1, fm_struct)
       CALL cp_fm_set_all(mo_coeff_1, 0.0_dp)
-      IF (.NOT. opt_pbpe%abs_localization) THEN
-         CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_1, opt_pbpe%naos(1), opt_pbpe%nmos(1), 1, 1, 1, 1)
-      ELSE
-         CALL cp_fm_to_fm(mo_coeff, mo_coeff_1)
-      END IF
+      CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_1, opt_pbpe%naos(1), opt_pbpe%nmos(1),
+                              1, 1, 1, 1)
       ! Replace mos_1(1)%mo_coeff with mo_coeff_1
       CALL set_mo_set(opt_pbpe%mos_1(1), nao=opt_pbpe%naos_in_pbpe(1))
       CALL cp_fm_release(opt_pbpe%mos_1(1)%mo_coeff)
@@ -483,11 +480,8 @@ CONTAINS
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%nmos(2))
       CALL cp_fm_create(mo_coeff_2, fm_struct)
       CALL cp_fm_set_all(mo_coeff_2, 0.0_dp)
-      IF (.NOT. opt_pbpe%abs_localization) THEN
-         CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_2, opt_pbpe%naos(2), opt_pbpe%nmos(2), 1, 1, opt_pbpe%naos(1) + 1, 1)
-      ELSE
-         CALL cp_fm_to_fm(mo_coeff, mo_coeff_2)
-      END IF
+      CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_2, opt_pbpe%naos(2), opt_pbpe%nmos(2),
+                              1, 1, opt_pbpe%naos_in_pbpe(2) - opt_pbpe%naos(2) + 1, 1)
       ! Replace mos_2(1)%mo_coeff with mo_coeff_2
       CALL set_mo_set(opt_pbpe%mos_2(1), nao=opt_pbpe%naos_in_pbpe(2))
       CALL cp_fm_release(opt_pbpe%mos_2(1)%mo_coeff)
