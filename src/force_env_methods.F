@@ -123,6 +123,7 @@ MODULE force_env_methods
         print_rho_diff, print_rho_spin_diff, read_embed_pot, release_opt_embed, step_control, &
         understand_spin_states
    USE optimize_pbpe_potential,         ONLY: check_pbpe_system,&
+                                              copy_ks_to_pbpe,&
                                               prepare_pbpe_opt,&
                                               release_pbpe_opt,&
                                               update_pbpe_density_and_ks_qs_env
@@ -2204,6 +2205,8 @@ CONTAINS
          ! Update total density matrix and Kohn-Sham matrix
          CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_total, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env)
 
+         ! Copy Kohn-Sham matrix and its submatrtices
+         CALL copy_ks_to_pbpe(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, opt_pbpe)
 
       END DO
 

@@ -154,7 +154,9 @@ MODULE embed_types
                                                           work2_1 => NULL(), work2_2 => NULL(), &
                                                           ortho_1 => NULL(), ortho_2 => NULL(), &
                                                           projection_1 => NULL(), projection_2 => NULL(), & 
-                                                          projection_environment => NULL()
+                                                          projection_environment => NULL(), &
+                                                          fm_tmp_1_1 => NULL(), fm_tmp_1_2 => NULL(), fm_tmp_1_3 => NULL(), &
+                                                          fm_tmp_2_1 => NULL(), fm_tmp_2_2 => NULL(), fm_tmp_2_3 => NULL()
       TYPE(mo_set_type), DIMENSION(:), POINTER         :: mos_1 => NULL(), mos_2 => NULL(), &
                                                           mos_cluster => NULL(), mos_environment => NULL()
    END TYPE opt_pbpe_pot_type
