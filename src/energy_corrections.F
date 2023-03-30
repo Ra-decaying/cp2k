@@ -19,6 +19,8 @@ MODULE energy_corrections
                                               get_atomic_kind
    USE basis_set_types,                 ONLY: get_gto_basis_set,&
                                               gto_basis_set_type
+   USE bibliography,                    ONLY: Belleflamme2023,&
+                                              cite_reference
    USE cell_types,                      ONLY: cell_type,&
                                               pbc
    USE core_ppl,                        ONLY: build_core_ppl
@@ -229,6 +231,8 @@ CONTAINS
       ELSE
          unit_nr = -1
       END IF
+
+      CALL cite_reference(Belleflamme2023)
 
       NULLIFY (ec_env)
       CALL get_qs_env(qs_env, ec_env=ec_env)
@@ -2583,8 +2587,8 @@ CONTAINS
          ! Core hamiltonian energy
          CALL calculate_ptrace(ec_env%matrix_h, ec_env%matrix_p, ec_env%ecore, SIZE(ec_env%matrix_p, 1))
 
-         ec_env%etotal = ec_env%ecore + ec_env%ehartree + ec_env%exc + ec_env%edispersion &
-                         + ec_env%efield_elec + ec_env%efield_nuclear
+         ec_env%ecore = ec_env%ecore + ec_env%efield_nuclear
+         ec_env%etotal = ec_env%ecore + ec_env%ehartree + ec_env%exc + ec_env%edispersion
          IF (unit_nr > 0) THEN
             WRITE (unit_nr, '(T3,A,T56,F25.15)') "Ecore    ", ec_env%ecore
             WRITE (unit_nr, '(T3,A,T56,F25.15)') "Ehartree ", ec_env%ehartree

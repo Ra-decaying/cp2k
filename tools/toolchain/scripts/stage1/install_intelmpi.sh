@@ -72,15 +72,24 @@ case "${with_intelmpi}" in
     ;;
 esac
 if [ "${with_intelmpi}" != "__DONTUSE__" ]; then
-  I_MPI_CC="icc"
-  I_MPI_FC="ifort"
+  if [ "${intel_classic}" = "yes" ]; then
+    I_MPI_CXX="icpc"
+    I_MPI_CC="icc"
+    I_MPI_FC="ifort"
+  else
+    I_MPI_CXX="icpx"
+    I_MPI_CC="icx"
+    I_MPI_FC="ifort"
+  fi
   INTELMPI_LIBS="-lmpi -lmpicxx"
-  echo "I_MPI_CC is ${I_MPI_CC}"
-  echo "I_MPI_FC is ${I_MPI_FC}"
-  echo "MPICC  is ${MPICC}"
-  echo "MPICXX is ${MPICXX}"
-  echo "MPIFC  is ${MPIFC}"
+  echo "I_MPI_CXX is ${I_MPI_CXX}"
+  echo "I_MPI_CC  is ${I_MPI_CC}"
+  echo "I_MPI_FC  is ${I_MPI_FC}"
+  echo "MPICXX    is ${MPICXX}"
+  echo "MPICC     is ${MPICC}"
+  echo "MPIFC     is ${MPIFC}"
   cat << EOF > "${BUILDDIR}/setup_intelmpi"
+export I_MPI_CXX="${I_MPI_CXX}"
 export I_MPI_CC="${I_MPI_CC}"
 export I_MPI_FC="${I_MPI_FC}"
 export MPI_MODE="${MPI_MODE}"
