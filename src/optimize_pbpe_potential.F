@@ -12,6 +12,7 @@ MODULE optimize_pbpe_potential
    USE cp_control_types,                ONLY: dft_control_type
    USE cp_dbcsr_operations,             ONLY: copy_dbcsr_to_fm,&
                                               copy_fm_to_dbcsr
+   USE cp_dbcsr_output,                 ONLY: write_fm_with_basis_info
    USE cp_fm_basic_linalg,              ONLY: cp_fm_scale_and_add
    USE cp_fm_diag,                      ONLY: cp_fm_power
    USE cp_fm_struct,                    ONLY: cp_fm_struct_create,&
@@ -23,6 +24,12 @@ MODULE optimize_pbpe_potential
                                               cp_fm_to_fm,&
                                               cp_fm_to_fm_submat,&
                                               cp_fm_type
+   USE cp_log_handling,                 ONLY: cp_get_default_logger,&
+                                              cp_logger_type
+   USE cp_output_handling,              ONLY: cp_p_file,&
+                                              cp_print_key_finished_output,&
+                                              cp_print_key_should_output,&
+                                              cp_print_key_unit_nr
    USE dbcsr_api,                       ONLY: dbcsr_p_type
    USE embed_types,                     ONLY: opt_pbpe_pot_type
    USE force_env_types,                 ONLY: force_env_type
@@ -66,6 +73,8 @@ CONTAINS
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       INTEGER, INTENT(IN)                                :: system_num
 
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'build_pbpe_sys_dm'
+
       INTEGER                                            :: homo, nao
       REAL(KIND=dp)                                      :: coeff
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
@@ -97,11 +106,14 @@ CONTAINS
 
 ! **************************************************************************************************
 !> \brief
-!> \param 
+!> \param opt_pbpe
+!> \param subsys_num
 ! **************************************************************************************************
    SUBROUTINE calculate_projected_ks_matrix(opt_pbpe, subsys_num)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       INTEGER, INTENT(IN)                                :: subsys_num
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'calculate_projected_ks_matrix'
 
       CPASSERT((subsys_num .EQ. 1) .OR. (subsys_num .EQ. 2))
       IF (subsys_num .EQ. 1) THEN
@@ -117,13 +129,17 @@ CONTAINS
    SUBROUTINE check_pbpe_system(force_env)
       TYPE(force_env_type), POINTER                      :: force_env
 
-      INTEGER                                            :: i_force_eval, n_force_eval, &
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'check_pbpe_system'
+
+      INTEGER                                            :: handle, i_force_eval, n_force_eval, &
                                                             cluster_subsys_num, high_level_subsys_num, &
                                                             ref_subsys_num
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: naos, nmos
       LOGICAL                                            :: do_kpoints
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
+
+      CALL timeset(routineN, handle)
 
       cluster_subsys_num = 0
       high_level_subsys_num = 0
@@ -178,6 +194,8 @@ CONTAINS
       DEALLOCATE (naos)
       DEALLOCATE (nmos)
 
+      CALL timestop(handle)
+   
    END SUBROUTINE check_pbpe_system
 
 ! **************************************************************************************************
@@ -188,6 +206,8 @@ CONTAINS
    SUBROUTINE copy_ks_to_pbpe(qs_env, opt_pbpe)
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'copy_ks_to_pbpe'
 
       TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: matrix_ks_kp
 
@@ -214,6 +234,8 @@ CONTAINS
    SUBROUTINE init_pbpe_matrices(force_env, opt_pbpe)
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'init_pbpe_matrices'
 
       INTEGER                                            :: n_dep_1, n_dep_2
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
@@ -417,8 +439,8 @@ CONTAINS
       n_dep_2 = 0
       CALL cp_fm_to_fm(opt_pbpe%s_1, opt_pbpe%ortho_1)
       CALL cp_fm_power(opt_pbpe%ortho_1, opt_pbpe%work2_1, -0.5_dp, 1.0E-5_dp, n_dep_1)
-      CALL cp_fm_to_fm(opt_pbpe%s_1, opt_pbpe%ortho_1)
-      CALL cp_fm_power(opt_pbpe%ortho_1, opt_pbpe%work2_1, -0.5_dp, 1.0E-5_dp, n_dep_2)
+      CALL cp_fm_to_fm(opt_pbpe%s_2, opt_pbpe%ortho_2)
+      CALL cp_fm_power(opt_pbpe%ortho_2, opt_pbpe%work2_2, -0.5_dp, 1.0E-5_dp, n_dep_2)
 
       ! Associate matrix pointers
       IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
@@ -457,6 +479,8 @@ CONTAINS
    SUBROUTINE init_pbpe_mo_sets(force_env, opt_pbpe)
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'init_pbpe_mo_sets'
 
       INTEGER                                            :: i_force_eval
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
@@ -538,12 +562,69 @@ CONTAINS
 !> \brief ...
 !> \param force_env ...
 !> \param opt_pbpe ...
+! **************************************************************************************************
+   SUBROUTINE pbpe_initialization_print(force_env, opt_pbpe)
+      TYPE(force_env_type), POINTER                      :: force_env
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_initial_print'
+
+      INTEGER                                            :: after, iw
+      LOGICAL                                            :: omit_headers
+      TYPE(cp_logger_type), POINTER                      :: logger
+      TYPE(mp_para_env_type), POINTER                    :: para_env
+      TYPE(qs_environment_type), POINTER                 :: qs_env
+      TYPE(section_vals_type), POINTER                   :: input
+
+      logger => cp_get_default_logger()
+
+      CALL get_qs_env(qs_env=force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env, &
+                      input=input, para_env=para_env)
+
+      IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO"), cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO", extension=".Log")
+         CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%NDIGITS", i_val=after)
+         CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%OMIT_HEADERS", l_val=omit_headers)
+         after = MIN(MAX(after, 1), 16)
+         CALL write_fm_with_basis_info(opt_pbpe%ortho_1, 4, after, &
+                                       qs_env=force_env%sub_force_env(1)%force_env%qs_env, &
+                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+         CALL write_fm_with_basis_info(opt_pbpe%ortho_2, 4, after, &
+                                       qs_env=force_env%sub_force_env(2)%force_env%qs_env, &
+                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO")
+      END IF
+
+      IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/OVERLAP"), cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/OVERLAP", extension=".Log")
+         CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%NDIGITS", i_val=after)
+         CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%OMIT_HEADERS", l_val=omit_headers)
+         after = MIN(MAX(after, 1), 16)
+         CALL write_fm_with_basis_info(opt_pbpe%s_1, 4, after, &
+                                       qs_env=force_env%sub_force_env(1)%force_env%qs_env, &
+                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+         CALL write_fm_with_basis_info(opt_pbpe%s_2, 4, after, &
+                                       qs_env=force_env%sub_force_env(2)%force_env%qs_env, &
+                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/OVERLAP")
+      END IF
+
+   END SUBROUTINE pbpe_initialization_print
+
+! **************************************************************************************************
+!> \brief ...
+!> \param force_env ...
+!> \param opt_pbpe ...
 !> \param opt_pbpe_section ...
 ! **************************************************************************************************
    SUBROUTINE prepare_pbpe_opt(force_env, opt_pbpe, opt_pbpe_section)
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       TYPE(section_vals_type), POINTER                   :: opt_pbpe_section
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'prepare_pbpe_opt'
 
       INTEGER                                            :: i_force_eval, n_force_eval
       TYPE(dft_control_type), POINTER                    :: dft_control
@@ -604,6 +685,8 @@ CONTAINS
          opt_pbpe%fermi_energy = opt_pbpe%homo_energy_2
       END IF
 
+      CALL pbpe_initialization_print(force_env, opt_pbpe)
+
    END SUBROUTINE prepare_pbpe_opt
 
 ! **************************************************************************************************
@@ -613,6 +696,8 @@ CONTAINS
    SUBROUTINE read_opt_pbpe_section(opt_pbpe, opt_pbpe_section)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       TYPE(section_vals_type), POINTER                   :: opt_pbpe_section
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'read_opt_pbpe_section'
 
       ! Read keywords
 
@@ -636,6 +721,8 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE release_pbpe_matrices(opt_pbpe)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'release_pbpe_matrices'
 
       NULLIFY (opt_pbpe%dm_cluster)
       NULLIFY (opt_pbpe%dm_environment)
@@ -863,6 +950,8 @@ CONTAINS
    SUBROUTINE release_pbpe_mo_sets(opt_pbpe)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'release_pbpe_mo_sets'
+
       NULLIFY (opt_pbpe%mos_cluster)
       NULLIFY (opt_pbpe%mos_environment)
 
@@ -886,6 +975,8 @@ CONTAINS
    SUBROUTINE release_pbpe_opt(opt_pbpe)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'release_pbpe_opt'
+
       CALL release_pbpe_matrices(opt_pbpe)
 
       CALL release_pbpe_mo_sets(opt_pbpe)
@@ -904,6 +995,8 @@ CONTAINS
    SUBROUTINE update_pbpe_density_and_ks_qs_env(density_matrix, qs_env)
    TYPE(cp_fm_type), INTENT(IN)                          :: density_matrix
    TYPE(qs_environment_type), POINTER                    :: qs_env
+
+   CHARACTER(LEN=*), PARAMETER                           :: routineN = 'update_pbpe_density_and_ks_qs_env'
 
    TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER           :: rho_ao_kp
    TYPE(qs_ks_env_type), POINTER                         :: ks_env

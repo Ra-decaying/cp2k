@@ -5955,13 +5955,14 @@ CONTAINS
       TYPE(section_type), POINTER                        :: section
 
       TYPE(keyword_type), POINTER                        :: keyword
+      TYPE(section_type), POINTER                        :: subsection
 
       CPASSERT(.NOT. ASSOCIATED(section))
       CALL section_create(section, __LOCATION__, name="OPT_PBPE", &
                           description="This section specifies optional parameters for PBPE potential optimization.", &
                           n_keywords=4, n_subsections=0, repeats=.FALSE.)
    
-      NULLIFY(keyword)
+      NULLIFY(keyword, subsection)
 
       CALL keyword_create(keyword, __LOCATION__, name="N_ITER", &
                           description="Maximum number of iterations "// &
@@ -5992,7 +5993,67 @@ CONTAINS
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 
+      CALL create_print_pbpe_section(subsection)
+      CALL section_add_subsection(section, subsection)
+      CALL section_release(subsection)
+
    END SUBROUTINE create_optimize_pbpe
+
+! **************************************************************************************************
+!> \brief Create the print pbpe section
+!> \param section the section to create
+!> \author Jianhao Li [2023.03]
+! **************************************************************************************************
+   SUBROUTINE create_print_pbpe_section(section)
+      TYPE(section_type), POINTER                        :: section
+
+      TYPE(keyword_type), POINTER                        :: keyword
+      TYPE(section_type), POINTER                        :: print_key, subsection
+
+      CPASSERT(.NOT. ASSOCIATED(section))
+      CALL section_create(section, __LOCATION__, name="PRINT", &
+                          description="Section of possible print options in PBPE code.", &
+                          n_keywords=0, n_subsections=1, repeats=.FALSE.)
+
+      NULLIFY (keyword, print_key, subsection)
+
+      CALL cp_print_key_section_create(print_key, __LOCATION__, "AO_MATRICES", &
+                                       description="Controls the printing of the ao (i.e. contracted gaussian) matrices (debug).", &
+                                       print_level=debug_print_level, filename="__STD_OUT__")
+      CALL keyword_create(keyword, __LOCATION__, name="NDIGITS", &
+                          description="Specify the number of digits used to print the AO matrices", &
+                          default_i_val=6)
+      CALL section_add_keyword(print_key, keyword)
+      CALL keyword_release(keyword)
+      CALL keyword_create(keyword, __LOCATION__, name="OMIT_HEADERS", &
+                          description="Print only the matrix data, not the row and column headers", &
+                          default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(print_key, keyword)
+      CALL keyword_release(keyword)
+      CALL keyword_create(keyword, __LOCATION__, name="DENSITY", &
+                          description="If the printkey is activated controls the printing of the density (P) matrix", &
+                          default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(print_key, keyword)
+      CALL keyword_release(keyword)
+      CALL keyword_create(keyword, __LOCATION__, name="KOHN_SHAM_MATRIX", &
+                          description="If the printkey is activated controls the printing of the kohn-sham matrix", &
+                          default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(print_key, keyword)
+      CALL keyword_release(keyword)
+      CALL keyword_create(keyword, __LOCATION__, name="ORTHO", &
+                          description="If the printkey is activated controls the printing of the orthogonalization matrix", &
+                          default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(print_key, keyword)
+      CALL keyword_release(keyword)
+      CALL keyword_create(keyword, __LOCATION__, name="OVERLAP", &
+                          description="If the printkey is activated controls the printing of the overlap matrix", &
+                          default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(print_key, keyword)
+      CALL keyword_release(keyword)
+      CALL section_add_subsection(section, print_key)
+      CALL section_release(print_key)
+
+   END SUBROUTINE create_print_pbpe_section
 
 ! **************************************************************************************************
 !> \brief ...
