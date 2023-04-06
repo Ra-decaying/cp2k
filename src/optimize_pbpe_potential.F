@@ -266,19 +266,102 @@ CONTAINS
 !> \param force_env ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
-   SUBROUTINE init_pbpe_matrices(force_env, opt_pbpe)
+   SUBROUTINE create_and_init_pbpe_mo_sets(force_env, opt_pbpe)
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
-      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'init_pbpe_matrices'
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'create_and_init_pbpe_mo_sets'
 
-      INTEGER                                            :: n_dep_1, n_dep_2
+      INTEGER                                            :: i_force_eval
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_array_1d
-      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: matrix_array_2d
+      TYPE(cp_fm_type), POINTER                          :: mo_coeff, mo_coeff_1, mo_coeff_2
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(mp_para_env_type), POINTER                    :: para_env
-      TYPE(qs_rho_type), POINTER                         :: rho
+
+      CALL get_qs_env(qs_env=force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env, &
+                      para_env=para_env)
+
+      NULLIFY (blacs_env)
+      CALL cp_blacs_env_create(blacs_env=blacs_env, para_env=para_env)
+
+      NULLIFY (opt_pbpe%mos_1, opt_pbpe%mos_2, opt_pbpe%mos_cluster, opt_pbpe%mos_environment)
+
+      ALLOCATE (opt_pbpe%mos_1(1))
+      ALLOCATE (opt_pbpe%mos_2(1))
+
+      NULLIFY (mo_coeff_1, mo_coeff_2)
+      NULLIFY (fm_struct)
+
+      ! Initialize mos_1
+      CALL get_qs_env(qs_env=force_env%sub_force_env(1)%force_env%qs_env, mos=mos)
+      CALL duplicate_mo_set(opt_pbpe%mos_1(1), mos(1))
+      ! Copy mos_1(1)%mo_coeff to mo_coeff_1
+      CALL get_mo_set(opt_pbpe%mos_1(1), mo_coeff=mo_coeff)
+      ALLOCATE (mo_coeff_1)
+      CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
+                               nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%nmos(1))
+      CALL cp_fm_create(mo_coeff_1, fm_struct)
+      CALL cp_fm_set_all(mo_coeff_1, 0.0_dp)
+      CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_1, opt_pbpe%naos(1), opt_pbpe%nmos(1), &
+                              1, 1, 1, 1)
+      ! Replace mos_1(1)%mo_coeff with mo_coeff_1
+      CALL set_mo_set(opt_pbpe%mos_1(1), nao=opt_pbpe%naos_in_pbpe(1))
+      CALL cp_fm_release(opt_pbpe%mos_1(1)%mo_coeff)
+      DEALLOCATE (opt_pbpe%mos_1(1)%mo_coeff)
+      opt_pbpe%mos_1(1)%mo_coeff => mo_coeff_1
+
+      CALL cp_fm_struct_release(fm_struct)
+      NULLIFY (fm_struct)
+
+      ! Initialize mos_2
+      CALL get_qs_env(qs_env=force_env%sub_force_env(2)%force_env%qs_env, mos=mos)
+      CALL duplicate_mo_set(opt_pbpe%mos_2(1), mos(1))
+      ! Copy mos_2(1)%mo_coeff to mo_coeff_2
+      CALL get_mo_set(opt_pbpe%mos_2(1), mo_coeff=mo_coeff)
+      ALLOCATE (mo_coeff_2)
+      CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
+                               nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%nmos(2))
+      CALL cp_fm_create(mo_coeff_2, fm_struct)
+      CALL cp_fm_set_all(mo_coeff_2, 0.0_dp)
+      CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_2, opt_pbpe%naos(2), opt_pbpe%nmos(2), &
+                              1, 1, opt_pbpe%naos_in_pbpe(2) - opt_pbpe%naos(2) + 1, 1)
+      ! Replace mos_2(1)%mo_coeff with mo_coeff_2
+      CALL set_mo_set(opt_pbpe%mos_2(1), nao=opt_pbpe%naos_in_pbpe(2))
+      CALL cp_fm_release(opt_pbpe%mos_2(1)%mo_coeff)
+      DEALLOCATE (opt_pbpe%mos_2(1)%mo_coeff)
+      opt_pbpe%mos_2(1)%mo_coeff => mo_coeff_2
+
+      CALL cp_fm_struct_release(fm_struct)
+      NULLIFY (fm_struct)
+
+      CALL cp_blacs_env_release(blacs_env)
+
+      ! Associate mos pointers
+      IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
+         opt_pbpe%mos_cluster => opt_pbpe%mos_1
+         opt_pbpe%mos_environment => opt_pbpe%mos_2
+      ELSE IF (opt_pbpe%cluster_subsys_num .EQ. 2) THEN
+         opt_pbpe%mos_cluster => opt_pbpe%mos_2
+         opt_pbpe%mos_environment => opt_pbpe%mos_1
+      END IF
+
+   END SUBROUTINE create_and_init_pbpe_mo_sets
+
+! **************************************************************************************************
+!> \brief ...
+!> \param force_env ...
+!> \param opt_pbpe ...
+! **************************************************************************************************
+   SUBROUTINE create_pbpe_matrices(force_env, opt_pbpe)
+      TYPE(force_env_type), POINTER                      :: force_env
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'create_pbpe_matrices'
+
+      TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
+      TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL get_qs_env(qs_env=force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env, &
                       para_env=para_env)
@@ -452,31 +535,6 @@ CONTAINS
       ! Release context
       CALL cp_blacs_env_release(blacs_env)
 
-      ! Initialize density matrices
-      CALL build_pbpe_sys_dm(opt_pbpe, system_num=1)
-      CALL build_pbpe_sys_dm(opt_pbpe, system_num=2)
-      CALL build_pbpe_sys_dm(opt_pbpe, system_num=3)
-
-      ! Initialize overlap matrices
-      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
-      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%s_total)
-      CALL cp_fm_to_fm_submat(opt_pbpe%s_total, opt_pbpe%s_1, opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), &
-                              1, 1, 1, 1)
-      CALL cp_fm_to_fm_submat(opt_pbpe%s_total, opt_pbpe%s_2, opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), &
-                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
-      CALL cp_fm_to_fm_submat(opt_pbpe%ks_total, opt_pbpe%s_12, opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), &
-                              1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
-      CALL cp_fm_to_fm_submat(opt_pbpe%ks_total, opt_pbpe%s_21, opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
-                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1, 1)
-
-      ! Prepare for diagonalization
-      n_dep_1 = 0
-      n_dep_2 = 0
-      CALL cp_fm_to_fm(opt_pbpe%s_1, opt_pbpe%ortho_1)
-      CALL cp_fm_power(opt_pbpe%ortho_1, opt_pbpe%work2_1, -0.5_dp, 1.0E-5_dp, n_dep_1)
-      CALL cp_fm_to_fm(opt_pbpe%s_2, opt_pbpe%ortho_2)
-      CALL cp_fm_power(opt_pbpe%ortho_2, opt_pbpe%work2_2, -0.5_dp, 1.0E-5_dp, n_dep_2)
-
       ! Associate matrix pointers
       IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
          opt_pbpe%dm_cluster => opt_pbpe%dm_1
@@ -504,94 +562,49 @@ CONTAINS
          END IF
       END IF
 
-   END SUBROUTINE init_pbpe_matrices
+   END SUBROUTINE create_pbpe_matrices
 
 ! **************************************************************************************************
 !> \brief ...
 !> \param force_env ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
-   SUBROUTINE init_pbpe_mo_sets(force_env, opt_pbpe)
+   SUBROUTINE init_pbpe_matrices(force_env, opt_pbpe)
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
-      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'init_pbpe_mo_sets'
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'init_pbpe_matrices'
 
-      INTEGER                                            :: i_force_eval
-      TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
-      TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_fm_type), POINTER                          :: mo_coeff, mo_coeff_1, mo_coeff_2
-      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
-      TYPE(mp_para_env_type), POINTER                    :: para_env
+      INTEGER                                            :: n_dep_1, n_dep_2
+      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: matrix_array_2d
+      TYPE(qs_rho_type), POINTER                         :: rho
 
-      CALL get_qs_env(qs_env=force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env, &
-                      para_env=para_env)
+      ! Initialize density matrices
+      CALL build_pbpe_sys_dm(opt_pbpe, system_num=1)
+      CALL build_pbpe_sys_dm(opt_pbpe, system_num=2)
+      CALL build_pbpe_sys_dm(opt_pbpe, system_num=3)
 
-      NULLIFY (blacs_env)
-      CALL cp_blacs_env_create(blacs_env=blacs_env, para_env=para_env)
-
-      NULLIFY (opt_pbpe%mos_1, opt_pbpe%mos_2, opt_pbpe%mos_cluster, opt_pbpe%mos_environment)
-
-      ALLOCATE (opt_pbpe%mos_1(1))
-      ALLOCATE (opt_pbpe%mos_2(1))
-
-      NULLIFY (mo_coeff_1, mo_coeff_2)
-      NULLIFY (fm_struct)
-
-      ! Initialize mos_1
-      CALL get_qs_env(qs_env=force_env%sub_force_env(1)%force_env%qs_env, mos=mos)
-      CALL duplicate_mo_set(opt_pbpe%mos_1(1), mos(1))
-      ! Copy mos_1(1)%mo_coeff to mo_coeff_1
-      CALL get_mo_set(opt_pbpe%mos_1(1), mo_coeff=mo_coeff)
-      ALLOCATE (mo_coeff_1)
-      CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
-                               nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%nmos(1))
-      CALL cp_fm_create(mo_coeff_1, fm_struct)
-      CALL cp_fm_set_all(mo_coeff_1, 0.0_dp)
-      CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_1, opt_pbpe%naos(1), opt_pbpe%nmos(1), &
+      ! Initialize overlap matrices
+      CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
+      CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%s_total)
+      CALL cp_fm_to_fm_submat(opt_pbpe%s_total, opt_pbpe%s_1, opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), &
                               1, 1, 1, 1)
-      ! Replace mos_1(1)%mo_coeff with mo_coeff_1
-      CALL set_mo_set(opt_pbpe%mos_1(1), nao=opt_pbpe%naos_in_pbpe(1))
-      CALL cp_fm_release(opt_pbpe%mos_1(1)%mo_coeff)
-      DEALLOCATE (opt_pbpe%mos_1(1)%mo_coeff)
-      opt_pbpe%mos_1(1)%mo_coeff => mo_coeff_1
+      CALL cp_fm_to_fm_submat(opt_pbpe%s_total, opt_pbpe%s_2, opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), &
+                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
+      CALL cp_fm_to_fm_submat(opt_pbpe%ks_total, opt_pbpe%s_12, opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), &
+                              1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
+      CALL cp_fm_to_fm_submat(opt_pbpe%ks_total, opt_pbpe%s_21, opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
+                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1, 1)
 
-      CALL cp_fm_struct_release(fm_struct)
-      NULLIFY (fm_struct)
+      ! Prepare for diagonalization
+      n_dep_1 = 0
+      n_dep_2 = 0
+      CALL cp_fm_to_fm(opt_pbpe%s_1, opt_pbpe%ortho_1)
+      CALL cp_fm_power(opt_pbpe%ortho_1, opt_pbpe%work2_1, -0.5_dp, 1.0E-5_dp, n_dep_1)
+      CALL cp_fm_to_fm(opt_pbpe%s_2, opt_pbpe%ortho_2)
+      CALL cp_fm_power(opt_pbpe%ortho_2, opt_pbpe%work2_2, -0.5_dp, 1.0E-5_dp, n_dep_2)
 
-      ! Initialize mos_2
-      CALL get_qs_env(qs_env=force_env%sub_force_env(2)%force_env%qs_env, mos=mos)
-      CALL duplicate_mo_set(opt_pbpe%mos_2(1), mos(1))
-      ! Copy mos_2(1)%mo_coeff to mo_coeff_2
-      CALL get_mo_set(opt_pbpe%mos_2(1), mo_coeff=mo_coeff)
-      ALLOCATE (mo_coeff_2)
-      CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
-                               nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%nmos(2))
-      CALL cp_fm_create(mo_coeff_2, fm_struct)
-      CALL cp_fm_set_all(mo_coeff_2, 0.0_dp)
-      CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_2, opt_pbpe%naos(2), opt_pbpe%nmos(2), &
-                              1, 1, opt_pbpe%naos_in_pbpe(2) - opt_pbpe%naos(2) + 1, 1)
-      ! Replace mos_2(1)%mo_coeff with mo_coeff_2
-      CALL set_mo_set(opt_pbpe%mos_2(1), nao=opt_pbpe%naos_in_pbpe(2))
-      CALL cp_fm_release(opt_pbpe%mos_2(1)%mo_coeff)
-      DEALLOCATE (opt_pbpe%mos_2(1)%mo_coeff)
-      opt_pbpe%mos_2(1)%mo_coeff => mo_coeff_2
-
-      CALL cp_fm_struct_release(fm_struct)
-      NULLIFY (fm_struct)
-
-      CALL cp_blacs_env_release(blacs_env)
-
-      ! Associate mos pointers
-      IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
-         opt_pbpe%mos_cluster => opt_pbpe%mos_1
-         opt_pbpe%mos_environment => opt_pbpe%mos_2
-      ELSE IF (opt_pbpe%cluster_subsys_num .EQ. 2) THEN
-         opt_pbpe%mos_cluster => opt_pbpe%mos_2
-         opt_pbpe%mos_environment => opt_pbpe%mos_1
-      END IF
-
-   END SUBROUTINE
+   END SUBROUTINE init_pbpe_matrices
 
 ! **************************************************************************************************
 !> \brief ...
@@ -766,10 +779,11 @@ CONTAINS
          opt_pbpe%naos_in_pbpe(opt_pbpe%high_level_subsys_num) = opt_pbpe%naos_in_pbpe(opt_pbpe%ref_subsys_num)
       END IF
 
-      ! Initialize MO sets
-      CALL init_pbpe_mo_sets(force_env, opt_pbpe)
+      ! Create and initialize MO sets
+      CALL create_and_init_pbpe_mo_sets(force_env, opt_pbpe)
 
-      ! Initialize cp_fm matrices
+      ! Create and initialize cp_fm matrices
+      CALL create_pbpe_matrices(force_env, opt_pbpe)
       CALL init_pbpe_matrices(force_env, opt_pbpe)
 
       ! Get Fermi energy
