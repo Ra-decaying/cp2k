@@ -123,7 +123,10 @@ MODULE force_env_methods
         print_rho_diff, print_rho_spin_diff, read_embed_pot, release_opt_embed, step_control, &
         understand_spin_states
    USE optimize_pbpe_potential,         ONLY: check_pbpe_system,&
+                                              calculate_embedded_ks_matrix,&
                                               copy_ks_to_pbpe,&
+                                              pbpe_initialization_print,&
+                                              pbpe_low_level_loop_print,&
                                               prepare_pbpe_opt,&
                                               release_pbpe_opt,&
                                               update_pbpe_density_and_ks_qs_env
@@ -2187,8 +2190,7 @@ CONTAINS
       nspins = dft_control%nspins
 
       dft_section => section_vals_get_subs_vals(input, "DFT")
-      opt_pbpe_section => section_vals_get_subs_vals(input, &
-                                                     "DFT%QS%OPT_PBPE")
+      opt_pbpe_section => section_vals_get_subs_vals(input, "DFT%QS%OPT_PBPE")
 
       CALL check_pbpe_system(force_env)
 
@@ -2199,14 +2201,21 @@ CONTAINS
       ! Prepare for the potential optimization
       CALL prepare_pbpe_opt(force_env, opt_pbpe, opt_pbpe_section)
 
+      ! Print information after initialization
+      CALL pbpe_initialization_print(force_env, opt_pbpe)
+
       ! Low-level iterative optimization
       DO i_iter = 1, opt_pbpe%n_iter
 
          ! Update total density matrix and Kohn-Sham matrix
          CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_total, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env)
 
-         ! Copy Kohn-Sham matrix and its submatrtices
+         ! Copy reference Kohn-Sham matrix and its submatrtices
          CALL copy_ks_to_pbpe(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, opt_pbpe)
+
+         CALL calculate_embedded_ks_matrix(opt_pbpe, subsys_num=1)
+
+         CALL pbpe_low_level_loop_print(force_env, opt_pbpe)
 
       END DO
 
