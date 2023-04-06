@@ -62,7 +62,7 @@ MODULE optimize_pbpe_potential
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'optimize_pbpe_potential'
 
    PUBLIC :: check_pbpe_system, calculate_embedded_ks_matrix, copy_ks_to_pbpe, &
-             pbpe_initialization_print, pbpe_low_level_loop_print, &
+             do_diagonalization, pbpe_initialization_print, pbpe_low_level_loop_print, &
              prepare_pbpe_opt, release_pbpe_opt, update_pbpe_density_and_ks_qs_env
 
 CONTAINS
@@ -70,11 +70,11 @@ CONTAINS
 ! **************************************************************************************************
 !> \brief ...
 !> \param opt_pbpe ...
-!> \param system_num ...
+!> \param subsys_num ...
 ! **************************************************************************************************
-   SUBROUTINE build_pbpe_sys_dm(opt_pbpe, system_num)
+   SUBROUTINE build_pbpe_sys_dm(opt_pbpe, subsys_num)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
-      INTEGER, INTENT(IN)                                :: system_num
+      INTEGER, INTENT(IN)                                :: subsys_num
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'build_pbpe_sys_dm'
 
@@ -82,15 +82,15 @@ CONTAINS
       REAL(KIND=dp)                                      :: coeff
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
 
-      CPASSERT((system_num .GT. 0) .AND. (system_num .LT. 4))
+      CPASSERT((subsys_num .GT. 0) .AND. (subsys_num .LT. 4))
 
       coeff = 2.0_dp
-      IF (system_num .EQ. 1) THEN
+      IF (subsys_num .EQ. 1) THEN
          CALL get_mo_set(mo_set=opt_pbpe%mos_1(1), mo_coeff=mo_coeff, nao=nao, homo=homo)
          CALL parallel_gemm(transa="N", transb="T", m=nao, n=nao, k=homo, &
                             alpha=coeff, matrix_a=mo_coeff, matrix_b=mo_coeff, &
                             beta=0.0_dp, matrix_c=opt_pbpe%dm_1)
-      ELSE IF (system_num .EQ. 2) THEN
+      ELSE IF (subsys_num .EQ. 2) THEN
          CALL get_mo_set(mo_set=opt_pbpe%mos_2(1), mo_coeff=mo_coeff, nao=nao, homo=homo)
          CALL parallel_gemm(transa="N", transb="T", m=nao, n=nao, k=homo, &
                             alpha=coeff, matrix_a=mo_coeff, matrix_b=mo_coeff, &
@@ -122,34 +122,34 @@ CONTAINS
 
       CPASSERT((subsys_num .EQ. 1) .OR. (subsys_num .EQ. 2))
       IF (subsys_num .EQ. 1) THEN
-         ! fm_tmp_1_1 = ks_12 - fermi_energy * s_12
-         CALL cp_fm_to_fm(opt_pbpe%ks_12, opt_pbpe%fm_tmp_1_1)
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp_1_1, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%s_12)
-         ! fm_tmp_1_2 = fm_tmp_1_1 * dm_2
+         ! fm_tmp1_1 = ks_12 - fermi_energy * s_12
+         CALL cp_fm_to_fm(opt_pbpe%ks_12, opt_pbpe%fm_tmp1_1)
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_1, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%s_12)
+         ! fm_tmp2_1 = fm_tmp1_1 * dm_2
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), &
-                            1.0_dp, opt_pbpe%fm_tmp_1_1, opt_pbpe%dm_2, 0.0_dp, opt_pbpe%fm_tmp_1_2)
-         ! fm_tmp_1_3 = fm_tmp_1_2 * s_21
+                            1.0_dp, opt_pbpe%fm_tmp1_1, opt_pbpe%dm_2, 0.0_dp, opt_pbpe%fm_tmp2_1)
+         ! fm_tmp3_1 = fm_tmp2_1 * s_21
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), &
-                            1.0_dp, opt_pbpe%fm_tmp_1_2, opt_pbpe%s_21, 0.0_dp, opt_pbpe%fm_tmp_1_3)
-         ! projection_2 = -0.5 * fm_tmp_1_3 * (fm_tmp_1_3 ^ T)
-         CALL cp_fm_to_fm(opt_pbpe%fm_tmp_1_3, opt_pbpe%projection_2)
-         CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp_1_3, -0.5_dp, opt_pbpe%projection_2)
+                            1.0_dp, opt_pbpe%fm_tmp2_1, opt_pbpe%s_21, 0.0_dp, opt_pbpe%fm_tmp3_1)
+         ! projection_2 = -0.5 * fm_tmp3_1 * (fm_tmp3_1 ^ T)
+         CALL cp_fm_to_fm(opt_pbpe%fm_tmp3_1, opt_pbpe%projection_2)
+         CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp3_1, -0.5_dp, opt_pbpe%projection_2)
          ! Calculate ks_1_in_2
          CALL cp_fm_to_fm(opt_pbpe%ks_1, opt_pbpe%ks_1_in_2)
          CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%projection_2, 1.0_dp, opt_pbpe%ks_1_in_2)
       ELSE IF (subsys_num .EQ. 2) THEN
-         ! fm_tmp_2_1 = ks_21 - fermi_energy * s_21
-         CALL cp_fm_to_fm(opt_pbpe%ks_21, opt_pbpe%fm_tmp_2_1)
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp_2_1, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%s_21)
-         ! fm_tmp_2_2 = fm_tmp_2_1 * dm_1
+         ! fm_tmp1_2 = ks_21 - fermi_energy * s_21
+         CALL cp_fm_to_fm(opt_pbpe%ks_21, opt_pbpe%fm_tmp1_2)
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_2, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%s_21)
+         ! fm_tmp2_2 = fm_tmp1_2 * dm_1
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), &
-                            1.0_dp, opt_pbpe%fm_tmp_2_1, opt_pbpe%dm_1, 0.0_dp, opt_pbpe%fm_tmp_2_2)
-         ! fm_tmp_2_3 = fm_tmp_2_2 * s_12
+                            1.0_dp, opt_pbpe%fm_tmp1_2, opt_pbpe%dm_1, 0.0_dp, opt_pbpe%fm_tmp2_2)
+         ! fm_tmp3_2 = fm_tmp2_2 * s_12
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
-                            1.0_dp, opt_pbpe%fm_tmp_2_2, opt_pbpe%s_12, 0.0_dp, opt_pbpe%fm_tmp_2_3)
-         ! projection_1 = -0.5 * fm_tmp_2_3 * (fm_tmp_2_3 ^ T)
-         CALL cp_fm_to_fm(opt_pbpe%fm_tmp_2_3, opt_pbpe%projection_1)
-         CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp_2_3, -0.5_dp, opt_pbpe%projection_1)
+                            1.0_dp, opt_pbpe%fm_tmp2_2, opt_pbpe%s_12, 0.0_dp, opt_pbpe%fm_tmp3_2)
+         ! projection_1 = -0.5 * fm_tmp3_2 * (fm_tmp3_2 ^ T)
+         CALL cp_fm_to_fm(opt_pbpe%fm_tmp3_2, opt_pbpe%projection_1)
+         CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp3_2, -0.5_dp, opt_pbpe%projection_1)
          ! Calculate ks_2_in_1
          CALL cp_fm_to_fm(opt_pbpe%ks_1, opt_pbpe%ks_2_in_1)
          CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%projection_1, 1.0_dp, opt_pbpe%ks_2_in_1)
@@ -421,7 +421,7 @@ CONTAINS
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%naos_in_pbpe(1))
       ALLOCATE (opt_pbpe%dm_1, opt_pbpe%dm_1_diff, opt_pbpe%s_1, opt_pbpe%ks_1, opt_pbpe%ks_1_in_2, & 
-                opt_pbpe%work1_1, opt_pbpe%work2_1, opt_pbpe%ortho_1, opt_pbpe%projection_2, opt_pbpe%fm_tmp_1_3)
+                opt_pbpe%work1_1, opt_pbpe%work2_1, opt_pbpe%ortho_1, opt_pbpe%projection_2, opt_pbpe%fm_tmp3_1)
       CALL cp_fm_create(opt_pbpe%dm_1, fm_struct, name="DENSITY MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%dm_1_diff, fm_struct, name="dm_1_diff")
       CALL cp_fm_create(opt_pbpe%s_1, fm_struct, name="OVERLAP MATRIX OF SUBSYSTEM 1")
@@ -431,7 +431,7 @@ CONTAINS
       CALL cp_fm_create(opt_pbpe%work2_1, fm_struct, name="work2_1")
       CALL cp_fm_create(opt_pbpe%ortho_1, fm_struct, name="ORTHO OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%projection_2, fm_struct, name="projection_2")
-      CALL cp_fm_create(opt_pbpe%fm_tmp_1_3, fm_struct, name="(ks12-e*s12)*d2*s21")
+      CALL cp_fm_create(opt_pbpe%fm_tmp3_1, fm_struct, name="(ks12-e*s12)*d2*s21")
 
       CALL cp_fm_set_all(opt_pbpe%dm_1, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_1_diff, 0.0_dp)
@@ -442,7 +442,7 @@ CONTAINS
       CALL cp_fm_set_all(opt_pbpe%work2_1, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ortho_1, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%projection_2, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%fm_tmp_1_3, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%fm_tmp3_1, 0.0_dp)
 
       ! Beta spin counterparts
       IF (opt_pbpe%open_shell_embed) THEN
@@ -461,7 +461,7 @@ CONTAINS
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%naos_in_pbpe(2))
       ALLOCATE (opt_pbpe%dm_2, opt_pbpe%dm_2_diff, opt_pbpe%s_2, opt_pbpe%ks_2, opt_pbpe%ks_2_in_1, &
-                opt_pbpe%work1_2, opt_pbpe%work2_2, opt_pbpe%ortho_2, opt_pbpe%projection_1, opt_pbpe%fm_tmp_2_3)
+                opt_pbpe%work1_2, opt_pbpe%work2_2, opt_pbpe%ortho_2, opt_pbpe%projection_1, opt_pbpe%fm_tmp3_2)
       CALL cp_fm_create(opt_pbpe%dm_2, fm_struct, name="DENSITY MATRIX OF SUBSYSTEM 2")
       CALL cp_fm_create(opt_pbpe%dm_2_diff, fm_struct, name="dm_2_diff")
       CALL cp_fm_create(opt_pbpe%s_2, fm_struct, name="OVERLAP MATRIX OF SUBSYSTEM 2")
@@ -471,7 +471,7 @@ CONTAINS
       CALL cp_fm_create(opt_pbpe%work2_2, fm_struct, name="work2_2")
       CALL cp_fm_create(opt_pbpe%ortho_2, fm_struct, name="ORTHO OF SUBSYSTEM 2")
       CALL cp_fm_create(opt_pbpe%projection_1, fm_struct, name="projection_1")
-      CALL cp_fm_create(opt_pbpe%fm_tmp_2_3, fm_struct, name="(ks21-e*s21)*d1*s12")
+      CALL cp_fm_create(opt_pbpe%fm_tmp3_2, fm_struct, name="(ks21-e*s21)*d1*s12")
 
       CALL cp_fm_set_all(opt_pbpe%dm_2, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_2_diff, 0.0_dp)
@@ -482,7 +482,7 @@ CONTAINS
       CALL cp_fm_set_all(opt_pbpe%work2_2, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ortho_2, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%projection_1, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%fm_tmp_2_3, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%fm_tmp3_2, 0.0_dp)
 
       ! Beta spin counterparts
       IF (opt_pbpe%open_shell_embed) THEN
@@ -500,16 +500,16 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%naos_in_pbpe(2))
-      ALLOCATE (opt_pbpe%s_12, opt_pbpe%ks_12, opt_pbpe%fm_tmp_1_1, opt_pbpe%fm_tmp_1_2)
+      ALLOCATE (opt_pbpe%s_12, opt_pbpe%ks_12, opt_pbpe%fm_tmp1_1, opt_pbpe%fm_tmp2_1)
       CALL cp_fm_create(opt_pbpe%s_12, fm_struct, name="s_12")
       CALL cp_fm_create(opt_pbpe%ks_12, fm_struct, name="ks_12")
-      CALL cp_fm_create(opt_pbpe%fm_tmp_1_1, fm_struct, name="ks12-e*s12")
-      CALL cp_fm_create(opt_pbpe%fm_tmp_1_2, fm_struct, name="(ks12-e*s12)*d2")
+      CALL cp_fm_create(opt_pbpe%fm_tmp1_1, fm_struct, name="ks12-e*s12")
+      CALL cp_fm_create(opt_pbpe%fm_tmp2_1, fm_struct, name="(ks12-e*s12)*d2")
 
       CALL cp_fm_set_all(opt_pbpe%s_12, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ks_12, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%fm_tmp_1_1, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%fm_tmp_1_2, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%fm_tmp1_1, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%fm_tmp2_1, 0.0_dp)
 
       ! Release structure
       CALL cp_fm_struct_release(fm_struct)
@@ -517,16 +517,16 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%naos_in_pbpe(1))
-      ALLOCATE (opt_pbpe%s_21, opt_pbpe%ks_21, opt_pbpe%fm_tmp_2_1, opt_pbpe%fm_tmp_2_2)
+      ALLOCATE (opt_pbpe%s_21, opt_pbpe%ks_21, opt_pbpe%fm_tmp1_2, opt_pbpe%fm_tmp2_2)
       CALL cp_fm_create(opt_pbpe%s_21, fm_struct, name="s_21")
       CALL cp_fm_create(opt_pbpe%ks_21, fm_struct, name="ks_21")
-      CALL cp_fm_create(opt_pbpe%fm_tmp_2_1, fm_struct, name="ks2-e*s21")
-      CALL cp_fm_create(opt_pbpe%fm_tmp_2_2, fm_struct, name="(ks2-e*s21)*d1")
+      CALL cp_fm_create(opt_pbpe%fm_tmp1_2, fm_struct, name="ks2-e*s21")
+      CALL cp_fm_create(opt_pbpe%fm_tmp2_2, fm_struct, name="(ks2-e*s21)*d1")
 
       CALL cp_fm_set_all(opt_pbpe%s_21, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ks_21, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%fm_tmp_2_1, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%fm_tmp_2_2, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%fm_tmp1_2, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%fm_tmp2_2, 0.0_dp)
 
       ! Release structure
       CALL cp_fm_struct_release(fm_struct)
@@ -566,6 +566,31 @@ CONTAINS
 
 ! **************************************************************************************************
 !> \brief ...
+!> \param opt_pbpe ...
+! **************************************************************************************************
+   SUBROUTINE do_diagonalization(opt_pbpe, subsys_num)
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+      INTEGER, INTENT(IN)                                :: subsys_num
+
+      CPASSERT((subsys_num .EQ. 1) .OR. (subsys_num .EQ. 2))
+      IF (subsys_num .EQ. 1) THEN
+         CALL cp_fm_to_fm(opt_pbpe%ks_1_in_2, opt_pbpe%work1_1)
+         CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_1, mo_set=opt_pbpe%mos_1(1), &
+                               ortho=opt_pbpe%ortho_1, work=opt_pbpe%work2_1, &
+                               do_level_shift=.FALSE., level_shift=0.0_dp, &
+                               use_jacobi=.FALSE., jacobi_threshold=0.0_dp)
+      ELSE IF (subsys_num .EQ. 2) THEN
+         CALL cp_fm_to_fm(opt_pbpe%ks_2_in_1, opt_pbpe%work1_2)
+         CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_2, mo_set=opt_pbpe%mos_2(1), &
+                               ortho=opt_pbpe%ortho_2, work=opt_pbpe%work2_2, &
+                               do_level_shift=.FALSE., level_shift=0.0_dp, &
+                               use_jacobi=.FALSE., jacobi_threshold=0.0_dp)
+      END IF
+
+   END SUBROUTINE do_diagonalization
+
+! **************************************************************************************************
+!> \brief ...
 !> \param force_env ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
@@ -580,9 +605,9 @@ CONTAINS
       TYPE(qs_rho_type), POINTER                         :: rho
 
       ! Initialize density matrices
-      CALL build_pbpe_sys_dm(opt_pbpe, system_num=1)
-      CALL build_pbpe_sys_dm(opt_pbpe, system_num=2)
-      CALL build_pbpe_sys_dm(opt_pbpe, system_num=3)
+      CALL build_pbpe_sys_dm(opt_pbpe, subsys_num=1)
+      CALL build_pbpe_sys_dm(opt_pbpe, subsys_num=2)
+      CALL build_pbpe_sys_dm(opt_pbpe, subsys_num=3)
 
       ! Initialize overlap matrices
       CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
@@ -1023,35 +1048,35 @@ CONTAINS
          NULLIFY (opt_pbpe%ks_21)
       END IF
 
-      IF (ASSOCIATED(opt_pbpe%fm_tmp_1_1)) THEN
-         CALL cp_fm_release(opt_pbpe%fm_tmp_1_1)
-         DEALLOCATE (opt_pbpe%fm_tmp_1_1)
-         NULLIFY (opt_pbpe%fm_tmp_1_1)
+      IF (ASSOCIATED(opt_pbpe%fm_tmp1_1)) THEN
+         CALL cp_fm_release(opt_pbpe%fm_tmp1_1)
+         DEALLOCATE (opt_pbpe%fm_tmp1_1)
+         NULLIFY (opt_pbpe%fm_tmp1_1)
       END IF
-      IF (ASSOCIATED(opt_pbpe%fm_tmp_1_2)) THEN
-         CALL cp_fm_release(opt_pbpe%fm_tmp_1_2)
-         DEALLOCATE (opt_pbpe%fm_tmp_1_2)
-         NULLIFY (opt_pbpe%fm_tmp_1_2)
+      IF (ASSOCIATED(opt_pbpe%fm_tmp2_1)) THEN
+         CALL cp_fm_release(opt_pbpe%fm_tmp2_1)
+         DEALLOCATE (opt_pbpe%fm_tmp2_1)
+         NULLIFY (opt_pbpe%fm_tmp2_1)
       END IF
-      IF (ASSOCIATED(opt_pbpe%fm_tmp_1_3)) THEN
-         CALL cp_fm_release(opt_pbpe%fm_tmp_1_3)
-         DEALLOCATE (opt_pbpe%fm_tmp_1_3)
-         NULLIFY (opt_pbpe%fm_tmp_1_3)
+      IF (ASSOCIATED(opt_pbpe%fm_tmp3_1)) THEN
+         CALL cp_fm_release(opt_pbpe%fm_tmp3_1)
+         DEALLOCATE (opt_pbpe%fm_tmp3_1)
+         NULLIFY (opt_pbpe%fm_tmp3_1)
       END IF
-      IF (ASSOCIATED(opt_pbpe%fm_tmp_2_1)) THEN
-         CALL cp_fm_release(opt_pbpe%fm_tmp_2_1)
-         DEALLOCATE (opt_pbpe%fm_tmp_2_1)
-         NULLIFY (opt_pbpe%fm_tmp_2_1)
+      IF (ASSOCIATED(opt_pbpe%fm_tmp1_2)) THEN
+         CALL cp_fm_release(opt_pbpe%fm_tmp1_2)
+         DEALLOCATE (opt_pbpe%fm_tmp1_2)
+         NULLIFY (opt_pbpe%fm_tmp1_2)
       END IF
-      IF (ASSOCIATED(opt_pbpe%fm_tmp_2_2)) THEN
-         CALL cp_fm_release(opt_pbpe%fm_tmp_2_2)
-         DEALLOCATE (opt_pbpe%fm_tmp_2_2)
-         NULLIFY (opt_pbpe%fm_tmp_2_2)
+      IF (ASSOCIATED(opt_pbpe%fm_tmp2_2)) THEN
+         CALL cp_fm_release(opt_pbpe%fm_tmp2_2)
+         DEALLOCATE (opt_pbpe%fm_tmp2_2)
+         NULLIFY (opt_pbpe%fm_tmp2_2)
       END IF
-      IF (ASSOCIATED(opt_pbpe%fm_tmp_2_3)) THEN
-         CALL cp_fm_release(opt_pbpe%fm_tmp_2_3)
-         DEALLOCATE (opt_pbpe%fm_tmp_2_3)
-         NULLIFY (opt_pbpe%fm_tmp_2_3)
+      IF (ASSOCIATED(opt_pbpe%fm_tmp3_2)) THEN
+         CALL cp_fm_release(opt_pbpe%fm_tmp3_2)
+         DEALLOCATE (opt_pbpe%fm_tmp3_2)
+         NULLIFY (opt_pbpe%fm_tmp3_2)
       END IF
 
    END SUBROUTINE release_pbpe_matrices

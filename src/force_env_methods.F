@@ -125,6 +125,7 @@ MODULE force_env_methods
    USE optimize_pbpe_potential,         ONLY: check_pbpe_system,&
                                               calculate_embedded_ks_matrix,&
                                               copy_ks_to_pbpe,&
+                                              do_diagonalization,&
                                               pbpe_initialization_print,&
                                               pbpe_low_level_loop_print,&
                                               prepare_pbpe_opt,&
@@ -2214,6 +2215,8 @@ CONTAINS
          CALL copy_ks_to_pbpe(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, opt_pbpe)
 
          CALL calculate_embedded_ks_matrix(opt_pbpe, subsys_num=1)
+
+         CALL do_diagonalization(opt_pbpe, subsys_num=1)
 
          CALL pbpe_low_level_loop_print(force_env, opt_pbpe)
 
