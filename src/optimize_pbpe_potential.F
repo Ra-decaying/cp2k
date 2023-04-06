@@ -61,7 +61,7 @@ MODULE optimize_pbpe_potential
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'optimize_pbpe_potential'
 
-   PUBLIC :: check_pbpe_system, calculate_embedded_ks_matrix, copy_ks_to_pbpe, &
+   PUBLIC :: build_pbpe_subsys_dm, check_pbpe_system, calculate_embedded_ks_matrix, copy_ks_to_pbpe, &
              do_diagonalization, pbpe_initialization_print, pbpe_low_level_loop_print, &
              prepare_pbpe_opt, release_pbpe_opt, update_pbpe_density_and_ks_qs_env
 
@@ -71,12 +71,14 @@ CONTAINS
 !> \brief ...
 !> \param opt_pbpe ...
 !> \param subsys_num ...
+!> \param density_matrix ...
 ! **************************************************************************************************
-   SUBROUTINE build_pbpe_sys_dm(opt_pbpe, subsys_num)
+   SUBROUTINE build_pbpe_subsys_dm(opt_pbpe, subsys_num, density_matrix)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       INTEGER, INTENT(IN)                                :: subsys_num
+      TYPE(cp_fm_type), POINTER                          :: density_matrix
 
-      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'build_pbpe_sys_dm'
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'build_pbpe_subsys_dm'
 
       INTEGER                                            :: homo, nao
       REAL(KIND=dp)                                      :: coeff
@@ -89,25 +91,25 @@ CONTAINS
          CALL get_mo_set(mo_set=opt_pbpe%mos_1(1), mo_coeff=mo_coeff, nao=nao, homo=homo)
          CALL parallel_gemm(transa="N", transb="T", m=nao, n=nao, k=homo, &
                             alpha=coeff, matrix_a=mo_coeff, matrix_b=mo_coeff, &
-                            beta=0.0_dp, matrix_c=opt_pbpe%dm_1)
+                            beta=0.0_dp, matrix_c=density_matrix)
       ELSE IF (subsys_num .EQ. 2) THEN
          CALL get_mo_set(mo_set=opt_pbpe%mos_2(1), mo_coeff=mo_coeff, nao=nao, homo=homo)
          CALL parallel_gemm(transa="N", transb="T", m=nao, n=nao, k=homo, &
                             alpha=coeff, matrix_a=mo_coeff, matrix_b=mo_coeff, &
-                            beta=0.0_dp, matrix_c=opt_pbpe%dm_2)
+                            beta=0.0_dp, matrix_c=density_matrix)
       ELSE
          IF (opt_pbpe%abs_localization) THEN
-            CALL cp_fm_to_fm_submat(opt_pbpe%dm_1, opt_pbpe%dm_total, opt_pbpe%naos(1), opt_pbpe%naos(1), &
+            CALL cp_fm_to_fm_submat(opt_pbpe%dm_1, density_matrix, opt_pbpe%naos(1), opt_pbpe%naos(1), &
                                     1, 1, 1, 1)
-            CALL cp_fm_to_fm_submat(opt_pbpe%dm_2, opt_pbpe%dm_total, opt_pbpe%naos(2), opt_pbpe%naos(2), &
+            CALL cp_fm_to_fm_submat(opt_pbpe%dm_2, density_matrix, opt_pbpe%naos(2), opt_pbpe%naos(2), &
                                     1, 1, opt_pbpe%naos(2) + 1, opt_pbpe%naos(2) + 1)
          ELSE
-            CALL cp_fm_to_fm(opt_pbpe%dm_1, opt_pbpe%dm_total)
-            CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%dm_total, 1.0_dp, opt_pbpe%dm_2)
+            CALL cp_fm_to_fm(opt_pbpe%dm_1, density_matrix)
+            CALL cp_fm_scale_and_add(1.0_dp, density_matrix, 1.0_dp, opt_pbpe%dm_2)
          END IF
       END IF
 
-   END SUBROUTINE build_pbpe_sys_dm
+   END SUBROUTINE build_pbpe_subsys_dm
 
 ! **************************************************************************************************
 !> \brief
@@ -370,7 +372,9 @@ CONTAINS
       CALL cp_blacs_env_create(blacs_env=blacs_env, para_env=para_env)
 
       NULLIFY (opt_pbpe%dm_1, opt_pbpe%dm_2, opt_pbpe%dm_total)
+      NULLIFY (opt_pbpe%dm_1_new, opt_pbpe%dm_2_new, opt_pbpe%dm_total_new)
       NULLIFY (opt_pbpe%dm_1_beta, opt_pbpe%dm_2_beta, opt_pbpe%dm_total_beta)
+      NULLIFY (opt_pbpe%dm_1_beta_new, opt_pbpe%dm_2_beta_new, opt_pbpe%dm_total_beta_new)
       NULLIFY (opt_pbpe%dm_1_diff, opt_pbpe%dm_2_diff, opt_pbpe%dm_total_diff)
       NULLIFY (opt_pbpe%dm_1_diff_beta, opt_pbpe%dm_2_diff_beta, opt_pbpe%dm_total_diff_beta)
       NULLIFY (opt_pbpe%dm_cluster, opt_pbpe%dm_environment)
@@ -393,24 +397,28 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(3), ncol_global=opt_pbpe%naos_in_pbpe(3))
-      ALLOCATE (opt_pbpe%dm_total, opt_pbpe%dm_total_diff, opt_pbpe%s_total, opt_pbpe%ks_total)
+      ALLOCATE (opt_pbpe%dm_total, opt_pbpe%dm_total_new, opt_pbpe%dm_total_diff, opt_pbpe%s_total, opt_pbpe%ks_total)
       CALL cp_fm_create(opt_pbpe%dm_total, fm_struct, name="dm_total")
+      CALL cp_fm_create(opt_pbpe%dm_total_new, fm_struct, name="dm_total_new")
       CALL cp_fm_create(opt_pbpe%dm_total_diff, fm_struct, name="dm_total_diff")
       CALL cp_fm_create(opt_pbpe%s_total, fm_struct, name="s_total")
       CALL cp_fm_create(opt_pbpe%ks_total, fm_struct, name="ks_total")
 
       CALL cp_fm_set_all(opt_pbpe%dm_total, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%dm_total_new, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_total_diff, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%s_total, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ks_total, 0.0_dp)
 
       ! Beta spin counterparts
       IF (opt_pbpe%open_shell_embed) THEN
-         ALLOCATE (opt_pbpe%dm_total_beta, opt_pbpe%dm_total_diff_beta)
+         ALLOCATE (opt_pbpe%dm_total_beta, opt_pbpe%dm_total_beta_new, opt_pbpe%dm_total_diff_beta)
          CALL cp_fm_create(opt_pbpe%dm_total_beta, fm_struct, name="dm_total_beta")
+         CALL cp_fm_create(opt_pbpe%dm_total_beta_new, fm_struct, name="dm_total_beta_new")
          CALL cp_fm_create(opt_pbpe%dm_total_diff_beta, fm_struct, name="dm_total_diff_beta")
 
          CALL cp_fm_set_all(opt_pbpe%dm_total_beta, 0.0_dp)
+         CALL cp_fm_set_all(opt_pbpe%dm_total_beta_new, 0.0_dp)
          CALL cp_fm_set_all(opt_pbpe%dm_total_diff_beta, 0.0_dp)
       END IF
 
@@ -420,9 +428,10 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%naos_in_pbpe(1))
-      ALLOCATE (opt_pbpe%dm_1, opt_pbpe%dm_1_diff, opt_pbpe%s_1, opt_pbpe%ks_1, opt_pbpe%ks_1_in_2, & 
+      ALLOCATE (opt_pbpe%dm_1, opt_pbpe%dm_1_new, opt_pbpe%dm_1_diff, opt_pbpe%s_1, opt_pbpe%ks_1, opt_pbpe%ks_1_in_2, & 
                 opt_pbpe%work1_1, opt_pbpe%work2_1, opt_pbpe%ortho_1, opt_pbpe%projection_2, opt_pbpe%fm_tmp3_1)
       CALL cp_fm_create(opt_pbpe%dm_1, fm_struct, name="DENSITY MATRIX OF SUBSYSTEM 1")
+      CALL cp_fm_create(opt_pbpe%dm_1_new, fm_struct, name="dm_1_new")
       CALL cp_fm_create(opt_pbpe%dm_1_diff, fm_struct, name="dm_1_diff")
       CALL cp_fm_create(opt_pbpe%s_1, fm_struct, name="OVERLAP MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%ks_1, fm_struct, name="KOHN-SHAM MATRIX OF SUBSYSTEM 1")
@@ -434,6 +443,7 @@ CONTAINS
       CALL cp_fm_create(opt_pbpe%fm_tmp3_1, fm_struct, name="(ks12-e*s12)*d2*s21")
 
       CALL cp_fm_set_all(opt_pbpe%dm_1, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%dm_1_new, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_1_diff, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%s_1, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ks_1, 0.0_dp)
@@ -446,11 +456,13 @@ CONTAINS
 
       ! Beta spin counterparts
       IF (opt_pbpe%open_shell_embed) THEN
-         ALLOCATE (opt_pbpe%dm_1_beta, opt_pbpe%dm_1_diff_beta)
+         ALLOCATE (opt_pbpe%dm_1_beta, opt_pbpe%dm_1_beta_new, opt_pbpe%dm_1_diff_beta)
          CALL cp_fm_create(opt_pbpe%dm_1_beta, fm_struct, name="dm_1_beta")
+         CALL cp_fm_create(opt_pbpe%dm_1_beta_new, fm_struct, name="dm_1_beta_new")
          CALL cp_fm_create(opt_pbpe%dm_1_diff_beta, fm_struct, name="dm_1_diff_beta")
 
          CALL cp_fm_set_all(opt_pbpe%dm_1_beta, 0.0_dp)
+         CALL cp_fm_set_all(opt_pbpe%dm_1_beta_new, 0.0_dp)
          CALL cp_fm_set_all(opt_pbpe%dm_1_diff_beta, 0.0_dp)
       END IF
 
@@ -460,9 +472,10 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%naos_in_pbpe(2))
-      ALLOCATE (opt_pbpe%dm_2, opt_pbpe%dm_2_diff, opt_pbpe%s_2, opt_pbpe%ks_2, opt_pbpe%ks_2_in_1, &
+      ALLOCATE (opt_pbpe%dm_2, opt_pbpe%dm_2_new, opt_pbpe%dm_2_diff, opt_pbpe%s_2, opt_pbpe%ks_2, opt_pbpe%ks_2_in_1, &
                 opt_pbpe%work1_2, opt_pbpe%work2_2, opt_pbpe%ortho_2, opt_pbpe%projection_1, opt_pbpe%fm_tmp3_2)
       CALL cp_fm_create(opt_pbpe%dm_2, fm_struct, name="DENSITY MATRIX OF SUBSYSTEM 2")
+      CALL cp_fm_create(opt_pbpe%dm_2_new, fm_struct, name="dm_2_diff")
       CALL cp_fm_create(opt_pbpe%dm_2_diff, fm_struct, name="dm_2_diff")
       CALL cp_fm_create(opt_pbpe%s_2, fm_struct, name="OVERLAP MATRIX OF SUBSYSTEM 2")
       CALL cp_fm_create(opt_pbpe%ks_2, fm_struct, name="KOHN-SHAM MATRIX OF SUBSYSTEM 2")
@@ -474,6 +487,7 @@ CONTAINS
       CALL cp_fm_create(opt_pbpe%fm_tmp3_2, fm_struct, name="(ks21-e*s21)*d1*s12")
 
       CALL cp_fm_set_all(opt_pbpe%dm_2, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%dm_2_new, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_2_diff, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%s_2, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ks_2, 0.0_dp)
@@ -486,11 +500,13 @@ CONTAINS
 
       ! Beta spin counterparts
       IF (opt_pbpe%open_shell_embed) THEN
-         ALLOCATE (opt_pbpe%dm_2_beta, opt_pbpe%dm_2_diff_beta)
+         ALLOCATE (opt_pbpe%dm_2_beta, opt_pbpe%dm_2_beta_new, opt_pbpe%dm_2_diff_beta)
          CALL cp_fm_create(opt_pbpe%dm_2_beta, fm_struct, name="dm_2_beta")
+         CALL cp_fm_create(opt_pbpe%dm_2_beta_new, fm_struct, name="dm_2_beta")
          CALL cp_fm_create(opt_pbpe%dm_2_diff_beta, fm_struct, name="dm_2_diff_beta")
 
          CALL cp_fm_set_all(opt_pbpe%dm_2_beta, 0.0_dp)
+         CALL cp_fm_set_all(opt_pbpe%dm_2_beta_new, 0.0_dp)
          CALL cp_fm_set_all(opt_pbpe%dm_2_diff_beta, 0.0_dp)
       END IF
 
@@ -605,9 +621,9 @@ CONTAINS
       TYPE(qs_rho_type), POINTER                         :: rho
 
       ! Initialize density matrices
-      CALL build_pbpe_sys_dm(opt_pbpe, subsys_num=1)
-      CALL build_pbpe_sys_dm(opt_pbpe, subsys_num=2)
-      CALL build_pbpe_sys_dm(opt_pbpe, subsys_num=3)
+      CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=1, density_matrix=opt_pbpe%dm_1)
+      CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=2, density_matrix=opt_pbpe%dm_2)
+      CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=3, density_matrix=opt_pbpe%dm_total)
 
       ! Initialize overlap matrices
       CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, matrix_s_kp=matrix_array_2d)

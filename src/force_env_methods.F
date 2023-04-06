@@ -122,7 +122,8 @@ MODULE force_env_methods
         prepare_embed_opt, print_emb_opt_info, print_embed_restart, print_pot_simple_grid, &
         print_rho_diff, print_rho_spin_diff, read_embed_pot, release_opt_embed, step_control, &
         understand_spin_states
-   USE optimize_pbpe_potential,         ONLY: check_pbpe_system,&
+   USE optimize_pbpe_potential,         ONLY: build_pbpe_subsys_dm,&
+                                              check_pbpe_system,&
                                               calculate_embedded_ks_matrix,&
                                               copy_ks_to_pbpe,&
                                               do_diagonalization,&
@@ -2208,15 +2209,24 @@ CONTAINS
       ! Low-level iterative optimization
       DO i_iter = 1, opt_pbpe%n_iter
 
-         ! Update total density matrix and Kohn-Sham matrix
+         ! Copy total density matrix and Kohn-Sham matrix to qs_env
          CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_total, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env)
 
          ! Copy reference Kohn-Sham matrix and its submatrtices
          CALL copy_ks_to_pbpe(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, opt_pbpe)
 
+         ! Update subsystem 1
          CALL calculate_embedded_ks_matrix(opt_pbpe, subsys_num=1)
-
          CALL do_diagonalization(opt_pbpe, subsys_num=1)
+         CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=1, density_matrix=opt_pbpe%dm_1_new)
+
+         ! Update subsystem 2
+         CALL calculate_embedded_ks_matrix(opt_pbpe, subsys_num=2)
+         CALL do_diagonalization(opt_pbpe, subsys_num=2)
+         CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=2, density_matrix=opt_pbpe%dm_2_new)
+
+         ! Update total density matrix
+         CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=ref_subsys_number, density_matrix=opt_pbpe%dm_total_new)
 
          CALL pbpe_low_level_loop_print(force_env, opt_pbpe)
 

@@ -138,7 +138,9 @@ MODULE embed_types
                                                           norm_D_A_diff, norm_D_B_diff
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)         :: max_diff
       TYPE(cp_fm_type), POINTER                        :: dm_1 => NULL(), dm_2 => NULL(), dm_total => NULL(), &
+                                                          dm_1_new => NULL(), dm_2_new => NULL(), dm_total_new => NULL(), &
                                                           dm_1_beta => NULL(), dm_2_beta => NULL(), dm_total_beta => NULL(), &
+                                                          dm_1_beta_new => NULL(), dm_2_beta_new => NULL(), dm_total_beta_new => NULL(), &
                                                           dm_1_diff => NULL(), dm_2_diff => NULL(), dm_total_diff => NULL(), &
                                                           dm_1_diff_beta => NULL(), dm_2_diff_beta => NULL(), dm_total_diff_beta => NULL(), &
                                                           dm_cluster => NULL(), dm_environment => NULL(), &
