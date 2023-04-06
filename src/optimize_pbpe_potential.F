@@ -113,8 +113,8 @@ CONTAINS
 
 ! **************************************************************************************************
 !> \brief
-!> \param opt_pbpe
-!> \param subsys_num
+!> \param opt_pbpe ...
+!> \param subsys_num ...
 ! **************************************************************************************************
    SUBROUTINE calculate_embedded_ks_matrix(opt_pbpe, subsys_num)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
@@ -153,7 +153,7 @@ CONTAINS
          CALL cp_fm_to_fm(opt_pbpe%fm_tmp3_2, opt_pbpe%projection_1)
          CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp3_2, -0.5_dp, opt_pbpe%projection_1)
          ! Calculate ks_2_in_1
-         CALL cp_fm_to_fm(opt_pbpe%ks_1, opt_pbpe%ks_2_in_1)
+         CALL cp_fm_to_fm(opt_pbpe%ks_2, opt_pbpe%ks_2_in_1)
          CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%projection_1, 1.0_dp, opt_pbpe%ks_2_in_1)
       END IF
 
@@ -402,7 +402,7 @@ CONTAINS
       CALL cp_fm_create(opt_pbpe%dm_total_new, fm_struct, name="dm_total_new")
       CALL cp_fm_create(opt_pbpe%dm_total_diff, fm_struct, name="dm_total_diff")
       CALL cp_fm_create(opt_pbpe%s_total, fm_struct, name="s_total")
-      CALL cp_fm_create(opt_pbpe%ks_total, fm_struct, name="ks_total")
+      CALL cp_fm_create(opt_pbpe%ks_total, fm_struct, name="KOHN-SHAM MATRIX")
 
       CALL cp_fm_set_all(opt_pbpe%dm_total, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_total_new, 0.0_dp)
@@ -435,7 +435,7 @@ CONTAINS
       CALL cp_fm_create(opt_pbpe%dm_1_diff, fm_struct, name="dm_1_diff")
       CALL cp_fm_create(opt_pbpe%s_1, fm_struct, name="OVERLAP MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%ks_1, fm_struct, name="KOHN-SHAM MATRIX OF SUBSYSTEM 1")
-      CALL cp_fm_create(opt_pbpe%ks_1_in_2, fm_struct, name="KOHN-SHAM MATRIX OF SUBSYSTEM 1")
+      CALL cp_fm_create(opt_pbpe%ks_1_in_2, fm_struct, name="EMBEDDED KOHN-SHAM MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%work1_1, fm_struct, name="work1_1")
       CALL cp_fm_create(opt_pbpe%work2_1, fm_struct, name="work2_1")
       CALL cp_fm_create(opt_pbpe%ortho_1, fm_struct, name="ORTHO OF SUBSYSTEM 1")
@@ -750,11 +750,19 @@ CONTAINS
       END IF
 
       IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES"), cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES", extension=".Log")
+         CALL write_fm_with_basis_info(opt_pbpe%ks_1_in_2, 4, after, qs_env=qs_env_1, &
+                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+         CALL write_fm_with_basis_info(opt_pbpe%ks_2_in_1, 4, after, qs_env=qs_env_2, &
+                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES")
+      END IF
+
+      IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
                                            "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX"), cp_p_file)) THEN
          iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX", extension=".Log")
-         CALL write_fm_with_basis_info(opt_pbpe%ks_1, 4, after, qs_env=qs_env_1, &
-                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
-         CALL write_fm_with_basis_info(opt_pbpe%ks_2, 4, after, qs_env=qs_env_2, &
+         CALL write_fm_with_basis_info(opt_pbpe%ks_total, 4, after, qs_env=qs_env_ref, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
          CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX")
       END IF

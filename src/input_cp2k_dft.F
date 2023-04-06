@@ -6035,6 +6035,11 @@ CONTAINS
                           default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
       CALL section_add_keyword(print_key, keyword)
       CALL keyword_release(keyword)
+      CALL keyword_create(keyword, __LOCATION__, name="EMBEDDED_KOHN_SHAM_MATRICES", &
+                          description="If the printkey is activated controls the printing of the embedded kohn-sham matrices", &
+                          default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(print_key, keyword)
+      CALL keyword_release(keyword)
       CALL keyword_create(keyword, __LOCATION__, name="KOHN_SHAM_MATRIX", &
                           description="If the printkey is activated controls the printing of the kohn-sham matrix", &
                           default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
