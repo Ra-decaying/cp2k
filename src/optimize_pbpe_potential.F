@@ -61,8 +61,9 @@ MODULE optimize_pbpe_potential
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'optimize_pbpe_potential'
 
-   PUBLIC :: build_pbpe_subsys_dm, check_pbpe_system, calculate_embedded_ks_matrix, copy_ks_to_pbpe, &
-             do_diagonalization, pbpe_initialization_print, pbpe_low_level_loop_print, &
+   PUBLIC :: build_pbpe_subsys_dm, check_pbpe_system, calculate_embedded_ks_matrix,& 
+             calculate_pbpe_dm_difference, copy_ks_to_pbpe, pbpe_do_diagonalization, &
+             pbpe_initialization_print, pbpe_low_level_loop_print, &
              prepare_pbpe_opt, release_pbpe_opt, update_pbpe_density_and_ks_qs_env
 
 CONTAINS
@@ -138,7 +139,7 @@ CONTAINS
          CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp3_1, -0.5_dp, opt_pbpe%projection_2)
          ! Calculate ks_1_in_2
          CALL cp_fm_to_fm(opt_pbpe%ks_1, opt_pbpe%ks_1_in_2)
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%projection_2, 1.0_dp, opt_pbpe%ks_1_in_2)
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%ks_1_in_2, 1.0_dp, opt_pbpe%projection_2)
       ELSE IF (subsys_num .EQ. 2) THEN
          ! fm_tmp1_2 = ks_21 - fermi_energy * s_21
          CALL cp_fm_to_fm(opt_pbpe%ks_21, opt_pbpe%fm_tmp1_2)
@@ -154,10 +155,32 @@ CONTAINS
          CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp3_2, -0.5_dp, opt_pbpe%projection_1)
          ! Calculate ks_2_in_1
          CALL cp_fm_to_fm(opt_pbpe%ks_2, opt_pbpe%ks_2_in_1)
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%projection_1, 1.0_dp, opt_pbpe%ks_2_in_1)
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%ks_2_in_1, 1.0_dp, opt_pbpe%projection_1)
       END IF
 
    END SUBROUTINE calculate_embedded_ks_matrix
+
+! **************************************************************************************************
+!> \brief
+!> \param opt_pbpe ...
+! **************************************************************************************************
+   SUBROUTINE calculate_pbpe_dm_difference(opt_pbpe)
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'calculate_pbpe_dm_difference'
+
+      CALL cp_fm_to_fm(opt_pbpe%dm_1_new, opt_pbpe%dm_1_diff)
+      CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%dm_1_diff, -1.0_dp, opt_pbpe%dm_1)
+      CALL cp_fm_to_fm(opt_pbpe%dm_2_new, opt_pbpe%dm_2_diff)
+      CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%dm_2_diff, -1.0_dp, opt_pbpe%dm_2)
+      CALL cp_fm_to_fm(opt_pbpe%dm_total_new, opt_pbpe%dm_total_diff)
+      CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%dm_total_diff, -1.0_dp, opt_pbpe%dm_total)
+
+      CALL cp_fm_to_fm(opt_pbpe%dm_1_new, opt_pbpe%dm_1)
+      CALL cp_fm_to_fm(opt_pbpe%dm_2_new, opt_pbpe%dm_2)
+      CALL cp_fm_to_fm(opt_pbpe%dm_total_new, opt_pbpe%dm_total)
+
+   END SUBROUTINE calculate_pbpe_dm_difference
 
 ! **************************************************************************************************
 !> \brief ...
@@ -582,31 +605,6 @@ CONTAINS
 
 ! **************************************************************************************************
 !> \brief ...
-!> \param opt_pbpe ...
-! **************************************************************************************************
-   SUBROUTINE do_diagonalization(opt_pbpe, subsys_num)
-      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
-      INTEGER, INTENT(IN)                                :: subsys_num
-
-      CPASSERT((subsys_num .EQ. 1) .OR. (subsys_num .EQ. 2))
-      IF (subsys_num .EQ. 1) THEN
-         CALL cp_fm_to_fm(opt_pbpe%ks_1_in_2, opt_pbpe%work1_1)
-         CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_1, mo_set=opt_pbpe%mos_1(1), &
-                               ortho=opt_pbpe%ortho_1, work=opt_pbpe%work2_1, &
-                               do_level_shift=.FALSE., level_shift=0.0_dp, &
-                               use_jacobi=.FALSE., jacobi_threshold=0.0_dp)
-      ELSE IF (subsys_num .EQ. 2) THEN
-         CALL cp_fm_to_fm(opt_pbpe%ks_2_in_1, opt_pbpe%work1_2)
-         CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_2, mo_set=opt_pbpe%mos_2(1), &
-                               ortho=opt_pbpe%ortho_2, work=opt_pbpe%work2_2, &
-                               do_level_shift=.FALSE., level_shift=0.0_dp, &
-                               use_jacobi=.FALSE., jacobi_threshold=0.0_dp)
-      END IF
-
-   END SUBROUTINE do_diagonalization
-
-! **************************************************************************************************
-!> \brief ...
 !> \param force_env ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
@@ -632,9 +630,9 @@ CONTAINS
                               1, 1, 1, 1)
       CALL cp_fm_to_fm_submat(opt_pbpe%s_total, opt_pbpe%s_2, opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), &
                               opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
-      CALL cp_fm_to_fm_submat(opt_pbpe%ks_total, opt_pbpe%s_12, opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), &
+      CALL cp_fm_to_fm_submat(opt_pbpe%s_total, opt_pbpe%s_12, opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), &
                               1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
-      CALL cp_fm_to_fm_submat(opt_pbpe%ks_total, opt_pbpe%s_21, opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
+      CALL cp_fm_to_fm_submat(opt_pbpe%s_total, opt_pbpe%s_21, opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
                               opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1, 1)
 
       ! Prepare for diagonalization
@@ -646,6 +644,33 @@ CONTAINS
       CALL cp_fm_power(opt_pbpe%ortho_2, opt_pbpe%work2_2, -0.5_dp, 1.0E-5_dp, n_dep_2)
 
    END SUBROUTINE init_pbpe_matrices
+
+! **************************************************************************************************
+!> \brief ...
+!> \param opt_pbpe ...
+! **************************************************************************************************
+   SUBROUTINE pbpe_do_diagonalization(opt_pbpe, subsys_num)
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+      INTEGER, INTENT(IN)                                :: subsys_num
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_do_diagonalization'
+
+      CPASSERT((subsys_num .EQ. 1) .OR. (subsys_num .EQ. 2))
+      IF (subsys_num .EQ. 1) THEN
+         CALL cp_fm_to_fm(opt_pbpe%ks_1_in_2, opt_pbpe%work1_1)
+         CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_1, mo_set=opt_pbpe%mos_1(1), &
+                               ortho=opt_pbpe%ortho_1, work=opt_pbpe%work2_1, &
+                               do_level_shift=.FALSE., level_shift=0.0_dp, &
+                               use_jacobi=.FALSE., jacobi_threshold=0.0_dp)
+      ELSE IF (subsys_num .EQ. 2) THEN
+         CALL cp_fm_to_fm(opt_pbpe%ks_2_in_1, opt_pbpe%work1_2)
+         CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_2, mo_set=opt_pbpe%mos_2(1), &
+                               ortho=opt_pbpe%ortho_2, work=opt_pbpe%work2_2, &
+                               do_level_shift=.FALSE., level_shift=0.0_dp, &
+                               use_jacobi=.FALSE., jacobi_threshold=0.0_dp)
+      END IF
+
+   END SUBROUTINE pbpe_do_diagonalization
 
 ! **************************************************************************************************
 !> \brief ...

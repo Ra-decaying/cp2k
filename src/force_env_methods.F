@@ -125,8 +125,9 @@ MODULE force_env_methods
    USE optimize_pbpe_potential,         ONLY: build_pbpe_subsys_dm,&
                                               check_pbpe_system,&
                                               calculate_embedded_ks_matrix,&
+                                              calculate_pbpe_dm_difference,&
                                               copy_ks_to_pbpe,&
-                                              do_diagonalization,&
+                                              pbpe_do_diagonalization,&
                                               pbpe_initialization_print,&
                                               pbpe_low_level_loop_print,&
                                               prepare_pbpe_opt,&
@@ -2217,16 +2218,19 @@ CONTAINS
 
          ! Update subsystem 1
          CALL calculate_embedded_ks_matrix(opt_pbpe, subsys_num=1)
-         CALL do_diagonalization(opt_pbpe, subsys_num=1)
+         CALL pbpe_do_diagonalization(opt_pbpe, subsys_num=1)
          CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=1, density_matrix=opt_pbpe%dm_1_new)
 
          ! Update subsystem 2
          CALL calculate_embedded_ks_matrix(opt_pbpe, subsys_num=2)
-         CALL do_diagonalization(opt_pbpe, subsys_num=2)
+         CALL pbpe_do_diagonalization(opt_pbpe, subsys_num=2)
          CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=2, density_matrix=opt_pbpe%dm_2_new)
 
          ! Update total density matrix
          CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=ref_subsys_number, density_matrix=opt_pbpe%dm_total_new)
+
+         ! Calculate density matrix difference
+         CALL calculate_pbpe_dm_difference(opt_pbpe)
 
          CALL pbpe_low_level_loop_print(force_env, opt_pbpe)
 
