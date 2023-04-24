@@ -92,8 +92,8 @@ MODULE xas_tdp_methods
    USE qs_interactions,                 ONLY: init_interaction_radii_orb_basis
    USE qs_kind_types,                   ONLY: get_qs_kind,&
                                               qs_kind_type
+   USE qs_loc_main,                     ONLY: qs_loc_driver
    USE qs_loc_methods,                  ONLY: centers_spreads_berry,&
-                                              qs_loc_driver,&
                                               qs_print_cubes
    USE qs_loc_types,                    ONLY: get_qs_loc_env,&
                                               localized_wfn_control_create,&
@@ -277,7 +277,10 @@ CONTAINS
          END IF
 !        closed shell or ROKS => myspin=1
          IF (xas_tdp_control%do_uks) THEN
-            CALL qs_loc_driver(qs_env, xas_tdp_env%qs_loc_env, xas_tdp_control%print_loc_subsection)
+            DO ispin = 1, dft_control%nspins
+               CALL qs_loc_driver(qs_env, xas_tdp_env%qs_loc_env, &
+                                  xas_tdp_control%print_loc_subsection, myspin=ispin)
+            END DO
          ELSE
             CALL qs_loc_driver(qs_env, xas_tdp_env%qs_loc_env, &
                                xas_tdp_control%print_loc_subsection, myspin=1)
@@ -1867,12 +1870,7 @@ CONTAINS
 !  Clean-up
       CALL cp_fm_release(opvec)
       CALL cp_fm_struct_release(tmp_fm_struct)
-      DO i = 1, dim_op
-         DO j = 1, 2
-            CALL cp_fm_release(zij_fm_set(j, i))
-         END DO
-      END DO
-      DEALLOCATE (zij_fm_set)
+      CALL cp_fm_release(zij_fm_set)
 
 !  Make sure we leave with the correct do_loc value
       qs_loc_env%do_localize = xas_tdp_control%do_loc

@@ -30,7 +30,6 @@ MODULE qs_linres_methods
                                               cp_fm_set_submatrix,&
                                               cp_fm_to_fm,&
                                               cp_fm_type
-   USE cp_fm_vect,                      ONLY: cp_fm_vect_dealloc
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
                                               cp_logger_type,&
                                               cp_to_string
@@ -67,7 +66,7 @@ MODULE qs_linres_methods
    USE qs_gapw_densities,               ONLY: prepare_gapw_den
    USE qs_linres_kernel,                ONLY: apply_op_2
    USE qs_linres_types,                 ONLY: linres_control_type
-   USE qs_loc_methods,                  ONLY: qs_loc_driver
+   USE qs_loc_main,                     ONLY: qs_loc_driver
    USE qs_loc_types,                    ONLY: get_qs_loc_env,&
                                               localized_wfn_control_type,&
                                               qs_loc_env_create,&
@@ -174,7 +173,7 @@ CONTAINS
 
       CALL loc_write_restart(qs_loc_env, loc_print_section, mos, &
                              mos_localized, do_homo=.TRUE.)
-      CALL cp_fm_vect_dealloc(mos_localized)
+      CALL cp_fm_release(mos_localized)
 
       ! Write Centers and Spreads on std out
       IF (iounit > 0) THEN
@@ -540,17 +539,16 @@ CONTAINS
       !
       !
       ! clean up
-      DO ispin = 1, nspins
-         CALL cp_fm_release(r(ispin))
-         CALL cp_fm_release(p(ispin))
-         CALL cp_fm_release(z(ispin))
-         CALL cp_fm_release(Ap(ispin))
-         !
-         CALL cp_fm_release(mo_coeff_array(ispin))
-         CALL cp_fm_release(Sc(ispin))
-         CALL cp_fm_release(chc(ispin))
-      END DO
-      DEALLOCATE (tr_pAp, tr_rz0, tr_rz00, tr_rz1, r, p, z, Ap, Sc, chc, mo_coeff_array)
+      CALL cp_fm_release(r)
+      CALL cp_fm_release(p)
+      CALL cp_fm_release(z)
+      CALL cp_fm_release(Ap)
+      !
+      CALL cp_fm_release(mo_coeff_array)
+      CALL cp_fm_release(Sc)
+      CALL cp_fm_release(chc)
+      !
+      DEALLOCATE (tr_pAp, tr_rz0, tr_rz00, tr_rz1)
       !
       CALL timestop(handle)
       !

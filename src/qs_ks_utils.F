@@ -752,10 +752,7 @@ CONTAINS
       CALL dbcsr_deallocate_matrix(orb_h)
       CALL cp_fm_release(matrix_v)
       CALL cp_fm_release(matrix_hv)
-      DO I = 1, SIZE(mo_derivs_local, 1)
-         CALL cp_fm_release(mo_derivs_local(I))
-      END DO
-      DEALLOCATE (mo_derivs_local)
+      CALL cp_fm_release(mo_derivs_local)
       DEALLOCATE (rho_r)
       DEALLOCATE (rho_g)
 
@@ -1138,6 +1135,9 @@ CONTAINS
          IF (energy%dispersion /= 0.0_dp) &
             WRITE (UNIT=output_unit, FMT="(T3,A,T61,F20.10)") &
             "Dispersion energy:                             ", energy%dispersion
+         IF (energy%efield /= 0.0_dp) &
+            WRITE (UNIT=output_unit, FMT="(T3,A,T61,F20.10)") &
+            "Electric field interaction energy:             ", energy%efield
          IF (energy%gcp /= 0.0_dp) &
             WRITE (UNIT=output_unit, FMT="(T3,A,T61,F20.10)") &
             "gCP energy:                                    ", energy%gcp

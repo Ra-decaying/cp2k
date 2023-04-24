@@ -308,6 +308,7 @@ QS/regtest-spin-spin-1
 QS/regtest-elpa-qr                                          elpa mpiranks==1||mpiranks%2==0
 QS/regtest-ot-refine-3
 QS/regtest-sym-5
+QS/regtest-iao
 Fist/regtest-9
 QS/regtest-mom-1
 TAMC/regtest
@@ -337,6 +338,7 @@ Fist/regtest-spgr                                           spglib
 Fist/regtest-plumed2                                        plumed2
 Fist/regtest-quip                                           quip
 Fist/regtest-nequip                                         libtorch
+Fist/regtest-allegro                                        libtorch
 Fist/regtest-16
 DFTB/regtest-vdw
 QS/regtest-tddfpt-force-gapw

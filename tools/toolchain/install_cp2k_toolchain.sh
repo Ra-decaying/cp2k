@@ -220,7 +220,7 @@ The --with-PKG options follow the rules:
                           Default = install
   --with-libvori          Enable libvori for the Voronoi integration (and the BQB compressed trajectory format)
                           Default = install
-  --with-libtorch         Enable libtorch the machine learning framework needed for NequIP.
+  --with-libtorch         Enable libtorch the machine learning framework needed for NequIP and Allegro
                           Default = no
 
 FURTHER INSTRUCTIONS

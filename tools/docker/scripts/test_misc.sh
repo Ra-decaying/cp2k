@@ -53,8 +53,10 @@ run_test mypy --strict ./tools/conventions/analyze_gfortran_ast.py
 #     /workspace/artifacts/dashboard/
 # done
 
+run_test cmake -DCP2K_ENABLE_CONSISTENCY_CHECKS=ON .
+
 echo ""
-echo "Summary: Python tests passed"
+echo "Summary: Miscellaneous tests passed"
 echo "Status: OK"
 
 #EOF
