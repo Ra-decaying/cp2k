@@ -318,6 +318,7 @@ list(
   metadynamics_utils.F
   metadyn_tools/graph_methods.F
   metadyn_tools/graph_utils.F
+  min_basis_set.F
   minbas_methods.F
   minbas_wfn_analysis.F
   mixed_cdft_methods.F
@@ -1299,20 +1300,24 @@ set(CP2K_GRID_SRCS_C
     grid/common/grid_basis_set.c
     grid/common/grid_library.c
     grid/common/grid_sphere_cache.c
-    grid/cpu/coefficients.c
-    grid/cpu/collocation_integration.c
-    grid/cpu/grid_collocate_dgemm.c
-    grid/cpu/grid_context_cpu.c
-    grid/cpu/grid_integrate_dgemm.c
-    grid/cpu/grid_prepare_pab_dgemm.c
-    grid/cpu/non_orthorombic_corrections.c
-    grid/cpu/tensor_local.c
-    grid/cpu/utils.c
+    grid/dgemm/grid_dgemm_coefficients.c
+    grid/dgemm/grid_dgemm_collocation_integration.c
+    grid/dgemm/grid_dgemm_collocate.c
+    grid/dgemm/grid_dgemm_context.c
+    grid/dgemm/grid_dgemm_integrate.c
+    grid/dgemm/grid_dgemm_prepare_pab.c
+    grid/dgemm/grid_dgemm_non_orthorombic_corrections.c
+    grid/dgemm/grid_dgemm_tensor_local.c
+    grid/dgemm/grid_dgemm_utils.c
     grid/grid_task_list.c
     grid/ref/grid_ref_collocate.c
     grid/ref/grid_ref_integrate.c
     grid/ref/grid_ref_prepare_pab.c
     grid/ref/grid_ref_task_list.c
+    grid/cpu/grid_cpu_collocate.c
+    grid/cpu/grid_cpu_integrate.c
+    grid/cpu/grid_cpu_prepare_pab.c
+    grid/cpu/grid_cpu_task_list.c
     grid/grid_replay.c)
 
 set(CP2K_FPGA_SRC_C pw/fpga/fft_fpga.c pw/fpga/opencl_utils.c)

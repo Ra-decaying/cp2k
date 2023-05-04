@@ -6,8 +6,8 @@ separation of concerns between computational chemists and performance engineers.
 
 Currently, this package offers the following main features:
 
-- Collocate a single task, see `grid_collocate_pgf_product_cpu` in
-  [grid_collocate_cpu.h](grid_collocate_cpu.h) for details.
+- Collocate a single task, see `grid_ref_collocate_pgf_product` in
+  [grid_ref_collocate.h](ref/grid_ref_collocate.h) for details.
 - Collocate a list of tasks, see `grid_collocate_task_list` in
   [grid_task_list.h](grid_task_list.h) for details.
 
@@ -16,6 +16,9 @@ Currently, the following backends exist:
 
 - [ref](./ref/): A reference implementations for documentation and validation purposes.
 - [cpu](./cpu/): A performance optimized implementation for x86 CPUs.
+- [dgemm](./dgemm/): An alternative implementation for x86 CPUs based on DGEMM.
+- [gpu](./gpu/): A GPU implemenation optimized for CUDA that also supports HIP.
+- [hip](./hip/): An implementation optimized for HIP.
 
 ## The .task files
 
@@ -47,7 +50,7 @@ For more information see [grid_replay.c](grid_replay.c).
 ## MiniApp
 
 The `grid_collocate_miniapp.x` binary allows to run individual .task files.
-By default `grid_collocate_pgf_product_cpu` is called. When the `--batch` flag
+By default `grid_ref_collocate_pgf_product` is called. When the `--batch` flag
 is set then `grid_collocate_task_list` is called instead.
 
 ```shell
