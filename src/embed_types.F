@@ -131,11 +131,12 @@ MODULE embed_types
                                                           cluster_subsys_num, environment_subsys_num, &
                                                           high_level_subsys_num, ref_subsys_num
       INTEGER, ALLOCATABLE, DIMENSION(:)               :: all_nspins, naos, naos_in_pbpe, nmos
-      LOGICAL                                          :: abs_localization, change_spin, converged, &
+      LOGICAL                                          :: abs_localization, change_spin, &
+                                                          low_level_converged, high_level_converged, &
                                                           do_kpoints, open_shell_embed
       REAL(KIND=dp)                                    :: conv_max, conv_rmse, &
                                                           homo_energy_1, homo_energy_2, fermi_energy, &
-                                                          norm_D_A_diff, norm_D_B_diff
+                                                          norm_dm_1_diff, norm_dm_2_diff, norm_dm_total_diff
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)         :: max_diff
       TYPE(cp_fm_type), POINTER                        :: dm_1 => NULL(), dm_2 => NULL(), dm_total => NULL(), &
                                                           dm_1_new => NULL(), dm_2_new => NULL(), dm_total_new => NULL(), &
@@ -143,10 +144,12 @@ MODULE embed_types
                                                           dm_1_beta_new => NULL(), dm_2_beta_new => NULL(), dm_total_beta_new => NULL(), &
                                                           dm_1_diff => NULL(), dm_2_diff => NULL(), dm_total_diff => NULL(), &
                                                           dm_1_diff_beta => NULL(), dm_2_diff_beta => NULL(), dm_total_diff_beta => NULL(), &
+                                                          dm_1_canonical => NULL(), dm_2_canonical => NULL(), dm_total_canonical => NULL(), &
                                                           dm_cluster => NULL(), dm_environment => NULL(), &
                                                           dm_cluster_beta => NULL(), dm_environment_beta => NULL(), &
                                                           dm_cluster_diff => NULL(), dm_environment_diff => NULL(), &
                                                           dm_cluster_diff_beta => NULL(), dm_environment_diff_beta => NULL(), &
+                                                          dm_cluster_canonical => NULL(), dm_environment_canonical => NULL(), &
                                                           s_1 => NULL(), s_2 => NULL(), s_total => NULL(), &
                                                           ks_1 => NULL(), ks_2 => NULL(), ks_total => NULL(), &
                                                           ks_1_in_2 => NULL(), ks_2_in_1 => NULL(), &

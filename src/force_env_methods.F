@@ -124,6 +124,8 @@ MODULE force_env_methods
         print_rho_diff, print_rho_spin_diff, read_embed_pot, release_opt_embed, step_control, &
         understand_spin_states
    USE optimize_pbpe_potential,         ONLY: build_pbpe_subsys_dm,&
+                                              build_pbpe_ref_subsys_dm,&
+                                              check_pbpe_low_level_convergence,&
                                               check_pbpe_system,&
                                               calculate_embedded_ks_matrix,&
                                               calculate_pbpe_dm_difference,&
@@ -131,6 +133,7 @@ MODULE force_env_methods
                                               pbpe_do_diagonalization,&
                                               pbpe_initialization_print,&
                                               pbpe_low_level_loop_print,&
+                                              pbpe_summary_print,&
                                               prepare_pbpe_opt,&
                                               release_pbpe_opt,&
                                               update_pbpe_density_and_ks_qs_env
@@ -2215,7 +2218,7 @@ CONTAINS
       CALL pbpe_initialization_print(force_env, opt_pbpe)
 
       ! Low-level iterative optimization
-      DO i_iter = 1, opt_pbpe%n_iter
+      low_level_loop: DO i_iter = 1, opt_pbpe%n_iter
 
          ! Copy total density matrix and Kohn-Sham matrix to qs_env
          CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_total, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env)
@@ -2234,14 +2237,27 @@ CONTAINS
          CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=2, density_matrix=opt_pbpe%dm_2_new)
 
          ! Update total density matrix
-         CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=ref_subsys_number, density_matrix=opt_pbpe%dm_total_new)
+         CALL build_pbpe_ref_subsys_dm(opt_pbpe, density_matrix=opt_pbpe%dm_total_new, use_new_subsys_dm=.TRUE.)
 
          ! Calculate density matrix difference
          CALL calculate_pbpe_dm_difference(opt_pbpe)
 
          CALL pbpe_low_level_loop_print(force_env, opt_pbpe)
 
-      END DO
+         WRITE (output_unit, '(A)') ""
+         WRITE (output_unit, '(A, ES15.6)') "norm_dm_1_diff=", opt_pbpe%norm_dm_1_diff 
+         WRITE (output_unit, '(A, ES15.6)') "norm_dm_2_diff=", opt_pbpe%norm_dm_2_diff
+         WRITE (output_unit, '(A, ES15.6)') "norm_dm_total_diff=", opt_pbpe%norm_dm_total_diff
+
+         CALL check_pbpe_low_level_convergence(opt_pbpe)
+
+         IF (opt_pbpe%low_level_converged) THEN
+            EXIT low_level_loop
+         END IF
+
+      END DO low_level_loop
+
+      CALL pbpe_summary_print(opt_pbpe, output_unit)
 
       CALL release_pbpe_opt(opt_pbpe)
 

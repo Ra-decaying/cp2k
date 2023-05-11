@@ -14,6 +14,7 @@ MODULE optimize_pbpe_potential
                                               copy_fm_to_dbcsr
    USE cp_dbcsr_output,                 ONLY: write_fm_with_basis_info
    USE cp_fm_basic_linalg,              ONLY: cp_fm_geadd,&
+                                              cp_fm_norm,&
                                               cp_fm_scale_and_add
    USE cp_fm_diag,                      ONLY: cp_fm_power
    USE cp_fm_struct,                    ONLY: cp_fm_struct_create,&
@@ -61,10 +62,13 @@ MODULE optimize_pbpe_potential
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'optimize_pbpe_potential'
 
-   PUBLIC :: build_pbpe_subsys_dm, check_pbpe_system, calculate_embedded_ks_matrix,& 
-             calculate_pbpe_dm_difference, copy_ks_to_pbpe, pbpe_do_diagonalization, &
-             pbpe_initialization_print, pbpe_low_level_loop_print, &
-             prepare_pbpe_opt, release_pbpe_opt, update_pbpe_density_and_ks_qs_env
+                                              
+   PUBLIC :: build_pbpe_subsys_dm, build_pbpe_ref_subsys_dm, check_pbpe_system, &
+             calculate_embedded_ks_matrix, calculate_pbpe_dm_difference, &
+             check_pbpe_low_level_convergence, copy_ks_to_pbpe, &
+             pbpe_do_diagonalization, pbpe_initialization_print, &
+             pbpe_low_level_loop_print, pbpe_summary_print, prepare_pbpe_opt, &
+             release_pbpe_opt, update_pbpe_density_and_ks_qs_env
 
 CONTAINS
 
@@ -85,7 +89,7 @@ CONTAINS
       REAL(KIND=dp)                                      :: coeff
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
 
-      CPASSERT((subsys_num .GT. 0) .AND. (subsys_num .LT. 4))
+      CPASSERT((subsys_num .EQ. 1) .OR. (subsys_num .EQ. 2))
 
       coeff = 2.0_dp
       IF (subsys_num .EQ. 1) THEN
@@ -98,19 +102,44 @@ CONTAINS
          CALL parallel_gemm(transa="N", transb="T", m=nao, n=nao, k=homo, &
                             alpha=coeff, matrix_a=mo_coeff, matrix_b=mo_coeff, &
                             beta=0.0_dp, matrix_c=density_matrix)
-      ELSE
-         IF (opt_pbpe%abs_localization) THEN
-            CALL cp_fm_to_fm_submat(opt_pbpe%dm_1, density_matrix, opt_pbpe%naos(1), opt_pbpe%naos(1), &
-                                    1, 1, 1, 1)
-            CALL cp_fm_to_fm_submat(opt_pbpe%dm_2, density_matrix, opt_pbpe%naos(2), opt_pbpe%naos(2), &
-                                    1, 1, opt_pbpe%naos(2) + 1, opt_pbpe%naos(2) + 1)
-         ELSE
-            CALL cp_fm_to_fm(opt_pbpe%dm_1, density_matrix)
-            CALL cp_fm_scale_and_add(1.0_dp, density_matrix, 1.0_dp, opt_pbpe%dm_2)
-         END IF
       END IF
 
    END SUBROUTINE build_pbpe_subsys_dm
+
+! **************************************************************************************************
+!> \brief ...
+!> \param opt_pbpe ...
+!> \param density_matrix ...
+!> \param use_new_subsys_dm ...
+! **************************************************************************************************
+   SUBROUTINE build_pbpe_ref_subsys_dm(opt_pbpe, density_matrix, use_new_subsys_dm)
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+      TYPE(cp_fm_type), POINTER                          :: density_matrix
+      LOGICAL                                            :: use_new_subsys_dm
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'build_pbpe_ref_sys_dm'
+
+      TYPE(cp_fm_type), POINTER                          :: dm_1, dm_2
+
+      IF (use_new_subsys_dm) THEN
+         dm_1 => opt_pbpe%dm_1_new
+         dm_2 => opt_pbpe%dm_2_new
+      ELSE
+         dm_1 => opt_pbpe%dm_1
+         dm_2 => opt_pbpe%dm_2
+      ENDIF
+
+      IF (opt_pbpe%abs_localization) THEN
+         CALL cp_fm_to_fm_submat(dm_1, density_matrix, opt_pbpe%naos(1), opt_pbpe%naos(1), &
+                                 1, 1, 1, 1)
+         CALL cp_fm_to_fm_submat(dm_2, density_matrix, opt_pbpe%naos(2), opt_pbpe%naos(2), &
+                                 1, 1, opt_pbpe%naos(2) + 1, opt_pbpe%naos(2) + 1)
+      ELSE
+         CALL cp_fm_to_fm(opt_pbpe%dm_1, density_matrix)
+         CALL cp_fm_scale_and_add(1.0_dp, density_matrix, 1.0_dp, opt_pbpe%dm_2)
+      END IF
+
+   END SUBROUTINE build_pbpe_ref_subsys_dm
 
 ! **************************************************************************************************
 !> \brief
@@ -180,7 +209,30 @@ CONTAINS
       CALL cp_fm_to_fm(opt_pbpe%dm_2_new, opt_pbpe%dm_2)
       CALL cp_fm_to_fm(opt_pbpe%dm_total_new, opt_pbpe%dm_total)
 
+      opt_pbpe%norm_dm_1_diff = cp_fm_norm(opt_pbpe%dm_1_diff, 'F')
+      opt_pbpe%norm_dm_2_diff = cp_fm_norm(opt_pbpe%dm_2_diff, 'F')
+      opt_pbpe%norm_dm_total_diff = cp_fm_norm(opt_pbpe%dm_total_diff, 'F')
+
    END SUBROUTINE calculate_pbpe_dm_difference
+
+! **************************************************************************************************
+!> \brief ...
+!> \param opt_pbpe ...
+! **************************************************************************************************
+   SUBROUTINE check_pbpe_low_level_convergence(opt_pbpe)
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'check_pbpe_low_level_convergence'
+
+      IF (opt_pbpe%norm_dm_1_diff .LT. opt_pbpe%conv_rmse .AND. &
+          opt_pbpe%norm_dm_2_diff .LT. opt_pbpe%conv_rmse .AND. &
+          opt_pbpe%norm_dm_total_diff .LT. opt_pbpe%conv_rmse) THEN
+         opt_pbpe%low_level_converged = .TRUE.
+      ELSE
+         opt_pbpe%low_level_converged = .FALSE.
+      END IF
+
+   END SUBROUTINE check_pbpe_low_level_convergence
 
 ! **************************************************************************************************
 !> \brief ...
@@ -236,8 +288,8 @@ CONTAINS
       END DO
 
       ! Check indices of different subsystems
-      IF ((cluster_subsys_num .NE. 1) .AND. (cluster_subsys_num .NE. 2)) THEN
-         CPABORT("Cluster subsystem must be the first or second FORCE_EVAL.")
+      IF (cluster_subsys_num .NE. 2) THEN
+         CPABORT("Cluster subsystem must be the second FORCE_EVAL.")
       ELSE IF (ref_subsys_num .NE. 3) THEN
          CPABORT("Reference subsystem must be the third FORCE_EVAL.")
       ELSE IF (high_level_subsys_num .NE. 4) THEN
@@ -363,13 +415,8 @@ CONTAINS
       CALL cp_blacs_env_release(blacs_env)
 
       ! Associate mos pointers
-      IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
-         opt_pbpe%mos_cluster => opt_pbpe%mos_1
-         opt_pbpe%mos_environment => opt_pbpe%mos_2
-      ELSE IF (opt_pbpe%cluster_subsys_num .EQ. 2) THEN
-         opt_pbpe%mos_cluster => opt_pbpe%mos_2
-         opt_pbpe%mos_environment => opt_pbpe%mos_1
-      END IF
+      opt_pbpe%mos_cluster => opt_pbpe%mos_2
+      opt_pbpe%mos_environment => opt_pbpe%mos_1
 
    END SUBROUTINE create_and_init_pbpe_mo_sets
 
@@ -400,10 +447,12 @@ CONTAINS
       NULLIFY (opt_pbpe%dm_1_beta_new, opt_pbpe%dm_2_beta_new, opt_pbpe%dm_total_beta_new)
       NULLIFY (opt_pbpe%dm_1_diff, opt_pbpe%dm_2_diff, opt_pbpe%dm_total_diff)
       NULLIFY (opt_pbpe%dm_1_diff_beta, opt_pbpe%dm_2_diff_beta, opt_pbpe%dm_total_diff_beta)
+      NULLIFY (opt_pbpe%dm_1_canonical, opt_pbpe%dm_2_canonical, opt_pbpe%dm_total_canonical)
       NULLIFY (opt_pbpe%dm_cluster, opt_pbpe%dm_environment)
       NULLIFY (opt_pbpe%dm_cluster_beta, opt_pbpe%dm_environment_beta)
       NULLIFY (opt_pbpe%dm_cluster_diff, opt_pbpe%dm_environment_diff)
       NULLIFY (opt_pbpe%dm_cluster_diff_beta, opt_pbpe%dm_environment_diff_beta)
+      NULLIFY (opt_pbpe%dm_cluster_canonical, opt_pbpe%dm_environment_canonical)
       NULLIFY (opt_pbpe%s_total, opt_pbpe%ks_total)
       NULLIFY (opt_pbpe%s_1, opt_pbpe%s_2)
       NULLIFY (opt_pbpe%ks_1, opt_pbpe%ks_2)
@@ -420,16 +469,19 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(3), ncol_global=opt_pbpe%naos_in_pbpe(3))
-      ALLOCATE (opt_pbpe%dm_total, opt_pbpe%dm_total_new, opt_pbpe%dm_total_diff, opt_pbpe%s_total, opt_pbpe%ks_total)
+      ALLOCATE (opt_pbpe%dm_total, opt_pbpe%dm_total_new, opt_pbpe%dm_total_diff, opt_pbpe%dm_total_canonical, &
+                opt_pbpe%s_total, opt_pbpe%ks_total)
       CALL cp_fm_create(opt_pbpe%dm_total, fm_struct, name="dm_total")
       CALL cp_fm_create(opt_pbpe%dm_total_new, fm_struct, name="dm_total_new")
       CALL cp_fm_create(opt_pbpe%dm_total_diff, fm_struct, name="dm_total_diff")
+      CALL cp_fm_create(opt_pbpe%dm_total_canonical, fm_struct, name="dm_total_canonical")
       CALL cp_fm_create(opt_pbpe%s_total, fm_struct, name="s_total")
       CALL cp_fm_create(opt_pbpe%ks_total, fm_struct, name="KOHN-SHAM MATRIX")
 
       CALL cp_fm_set_all(opt_pbpe%dm_total, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_total_new, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_total_diff, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%dm_total_canonical, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%s_total, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ks_total, 0.0_dp)
 
@@ -451,11 +503,13 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%naos_in_pbpe(1))
-      ALLOCATE (opt_pbpe%dm_1, opt_pbpe%dm_1_new, opt_pbpe%dm_1_diff, opt_pbpe%s_1, opt_pbpe%ks_1, opt_pbpe%ks_1_in_2, & 
-                opt_pbpe%work1_1, opt_pbpe%work2_1, opt_pbpe%ortho_1, opt_pbpe%projection_2, opt_pbpe%fm_tmp3_1)
+      ALLOCATE (opt_pbpe%dm_1, opt_pbpe%dm_1_new, opt_pbpe%dm_1_diff, opt_pbpe%dm_1_canonical, &
+                opt_pbpe%s_1, opt_pbpe%ks_1, opt_pbpe%ks_1_in_2, opt_pbpe%work1_1, opt_pbpe%work2_1, &
+                opt_pbpe%ortho_1, opt_pbpe%projection_2, opt_pbpe%fm_tmp3_1)
       CALL cp_fm_create(opt_pbpe%dm_1, fm_struct, name="DENSITY MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%dm_1_new, fm_struct, name="dm_1_new")
       CALL cp_fm_create(opt_pbpe%dm_1_diff, fm_struct, name="dm_1_diff")
+      CALL cp_fm_create(opt_pbpe%dm_1_canonical, fm_struct, name="dm_1_canonical")
       CALL cp_fm_create(opt_pbpe%s_1, fm_struct, name="OVERLAP MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%ks_1, fm_struct, name="KOHN-SHAM MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%ks_1_in_2, fm_struct, name="EMBEDDED KOHN-SHAM MATRIX OF SUBSYSTEM 1")
@@ -495,11 +549,13 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%naos_in_pbpe(2))
-      ALLOCATE (opt_pbpe%dm_2, opt_pbpe%dm_2_new, opt_pbpe%dm_2_diff, opt_pbpe%s_2, opt_pbpe%ks_2, opt_pbpe%ks_2_in_1, &
-                opt_pbpe%work1_2, opt_pbpe%work2_2, opt_pbpe%ortho_2, opt_pbpe%projection_1, opt_pbpe%fm_tmp3_2)
+      ALLOCATE (opt_pbpe%dm_2, opt_pbpe%dm_2_new, opt_pbpe%dm_2_diff, opt_pbpe%dm_2_canonical, &
+                opt_pbpe%s_2, opt_pbpe%ks_2, opt_pbpe%ks_2_in_1, opt_pbpe%work1_2, opt_pbpe%work2_2, &
+                opt_pbpe%ortho_2, opt_pbpe%projection_1, opt_pbpe%fm_tmp3_2)
       CALL cp_fm_create(opt_pbpe%dm_2, fm_struct, name="DENSITY MATRIX OF SUBSYSTEM 2")
-      CALL cp_fm_create(opt_pbpe%dm_2_new, fm_struct, name="dm_2_diff")
+      CALL cp_fm_create(opt_pbpe%dm_2_new, fm_struct, name="dm_2_new")
       CALL cp_fm_create(opt_pbpe%dm_2_diff, fm_struct, name="dm_2_diff")
+      CALL cp_fm_create(opt_pbpe%dm_2_canonical, fm_struct, name="dm_2_canonical")
       CALL cp_fm_create(opt_pbpe%s_2, fm_struct, name="OVERLAP MATRIX OF SUBSYSTEM 2")
       CALL cp_fm_create(opt_pbpe%ks_2, fm_struct, name="KOHN-SHAM MATRIX OF SUBSYSTEM 2")
       CALL cp_fm_create(opt_pbpe%ks_2_in_1, fm_struct, name="EMBEDDED KOHN-SHAM MATRIX OF SUBSYSTEM 2")
@@ -575,30 +631,16 @@ CONTAINS
       CALL cp_blacs_env_release(blacs_env)
 
       ! Associate matrix pointers
-      IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
-         opt_pbpe%dm_cluster => opt_pbpe%dm_1
-         opt_pbpe%dm_environment => opt_pbpe%dm_2
-         opt_pbpe%dm_cluster_diff => opt_pbpe%dm_1_diff
-         opt_pbpe%dm_environment_diff => opt_pbpe%dm_2_diff
-         ! Beta spin counterparts
-         IF (opt_pbpe%open_shell_embed) THEN
-            opt_pbpe%dm_cluster_beta => opt_pbpe%dm_1_beta
-            opt_pbpe%dm_environment_beta => opt_pbpe%dm_2_beta
-            opt_pbpe%dm_cluster_diff_beta => opt_pbpe%dm_1_diff_beta
-            opt_pbpe%dm_environment_diff_beta => opt_pbpe%dm_2_diff_beta
-         END IF
-      ELSE IF (opt_pbpe%cluster_subsys_num .EQ. 2) THEN
-         opt_pbpe%dm_cluster => opt_pbpe%dm_2
-         opt_pbpe%dm_environment => opt_pbpe%dm_1
-         opt_pbpe%dm_cluster_diff => opt_pbpe%dm_2_diff
-         opt_pbpe%dm_environment_diff => opt_pbpe%dm_1_diff
-         ! Beta spin counterparts
-         IF (opt_pbpe%open_shell_embed) THEN
-            opt_pbpe%dm_cluster_beta => opt_pbpe%dm_2_beta
-            opt_pbpe%dm_environment_beta => opt_pbpe%dm_1_beta
-            opt_pbpe%dm_cluster_diff_beta => opt_pbpe%dm_2_diff_beta
-            opt_pbpe%dm_environment_diff_beta => opt_pbpe%dm_1_diff_beta
-         END IF
+      opt_pbpe%dm_cluster => opt_pbpe%dm_2
+      opt_pbpe%dm_environment => opt_pbpe%dm_1
+      opt_pbpe%dm_cluster_diff => opt_pbpe%dm_2_diff
+      opt_pbpe%dm_environment_diff => opt_pbpe%dm_1_diff
+      ! Beta spin counterparts
+      IF (opt_pbpe%open_shell_embed) THEN
+         opt_pbpe%dm_cluster_beta => opt_pbpe%dm_2_beta
+         opt_pbpe%dm_environment_beta => opt_pbpe%dm_1_beta
+         opt_pbpe%dm_cluster_diff_beta => opt_pbpe%dm_2_diff_beta
+         opt_pbpe%dm_environment_diff_beta => opt_pbpe%dm_1_diff_beta
       END IF
 
    END SUBROUTINE create_pbpe_matrices
@@ -621,7 +663,7 @@ CONTAINS
       ! Initialize density matrices
       CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=1, density_matrix=opt_pbpe%dm_1)
       CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=2, density_matrix=opt_pbpe%dm_2)
-      CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=3, density_matrix=opt_pbpe%dm_total)
+      CALL build_pbpe_ref_subsys_dm(opt_pbpe, density_matrix=opt_pbpe%dm_total, use_new_subsys_dm=.FALSE.)
 
       ! Initialize overlap matrices
       CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
@@ -796,6 +838,20 @@ CONTAINS
 
 ! **************************************************************************************************
 !> \brief ...
+!> \param opt_pbpe ...
+!> \param output_unit ...
+! **************************************************************************************************
+   SUBROUTINE pbpe_summary_print(opt_pbpe, output_unit)
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+      INTEGER                                            :: output_unit
+   
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_summary_print'
+
+
+   END SUBROUTINE pbpe_summary_print
+
+! **************************************************************************************************
+!> \brief ...
 !> \param force_env ...
 !> \param opt_pbpe ...
 !> \param opt_pbpe_section ...
@@ -836,11 +892,7 @@ CONTAINS
          END IF
       END DO
 
-      IF (opt_pbpe%cluster_subsys_num .EQ. 1) THEN
-         opt_pbpe%environment_subsys_num = 2
-      ELSE IF (opt_pbpe%cluster_subsys_num .EQ. 2) THEN
-         opt_pbpe%environment_subsys_num = 1
-      END IF
+      opt_pbpe%environment_subsys_num = 1
 
       DO i_force_eval = 1, n_force_eval
          opt_pbpe%naos_in_pbpe(i_force_eval) = opt_pbpe%naos(i_force_eval) 
@@ -915,6 +967,8 @@ CONTAINS
       NULLIFY (opt_pbpe%dm_environment)
       NULLIFY (opt_pbpe%dm_cluster_diff)
       NULLIFY (opt_pbpe%dm_environment_diff)
+      NULLIFY (opt_pbpe%dm_cluster_canonical)
+      NULLIFY (opt_pbpe%dm_environment_canonical)
 
       IF (opt_pbpe%open_shell_embed) THEN
          NULLIFY (opt_pbpe%dm_cluster_beta)
@@ -966,6 +1020,11 @@ CONTAINS
          CALL cp_fm_release(opt_pbpe%dm_1_diff)
          DEALLOCATE (opt_pbpe%dm_1_diff)
          NULLIFY (opt_pbpe%dm_1_diff)
+      END IF
+      IF (ASSOCIATED(opt_pbpe%dm_1_canonical)) THEN
+         CALL cp_fm_release(opt_pbpe%dm_1_canonical)
+         DEALLOCATE (opt_pbpe%dm_1_canonical)
+         NULLIFY (opt_pbpe%dm_1_canonical)
       END IF
       IF (ASSOCIATED(opt_pbpe%s_1)) THEN
          CALL cp_fm_release(opt_pbpe%s_1)
@@ -1025,6 +1084,11 @@ CONTAINS
          CALL cp_fm_release(opt_pbpe%dm_2_diff)
          DEALLOCATE (opt_pbpe%dm_2_diff)
          NULLIFY (opt_pbpe%dm_2_diff)
+      END IF
+      IF (ASSOCIATED(opt_pbpe%dm_2_canonical)) THEN
+         CALL cp_fm_release(opt_pbpe%dm_2_canonical)
+         DEALLOCATE (opt_pbpe%dm_2_canonical)
+         NULLIFY (opt_pbpe%dm_2_canonical)
       END IF
       IF (ASSOCIATED(opt_pbpe%s_2)) THEN
          CALL cp_fm_release(opt_pbpe%s_2)
