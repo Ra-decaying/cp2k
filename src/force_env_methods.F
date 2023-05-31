@@ -129,7 +129,7 @@ MODULE force_env_methods
                                               check_pbpe_system,&
                                               calculate_embedded_ks_matrix,&
                                               calculate_pbpe_dm_difference,&
-                                              copy_ks_to_pbpe,&
+                                              copy_ks_from_qs_to_pbpe,&
                                               pbpe_do_diagonalization,&
                                               pbpe_initialization_print,&
                                               pbpe_low_level_loop_print,&
@@ -1486,10 +1486,17 @@ CONTAINS
             particles(iforce_eval)%list%els(iparticle)%r = particles_embed%els(jparticle)%r
          END DO
 
+!IF (iforce_eval .EQ. 4) THEN
+!   CPWARN("before calling force_env_calc_energy_force")
+!END IF
          ! Calculate energy and forces for each sub_force_env
          CALL force_env_calc_energy_force(force_env%sub_force_env(iforce_eval)%force_env, &
                                           calc_force=.FALSE., &
                                           skip_external_control=.TRUE.)
+
+!IF (iforce_eval .EQ. 4) THEN
+!   CPWARN("after calling force_env_calc_energy_force")
+!END IF
 
          ! Call DFT embedding
          IF (ASSOCIATED(force_env%sub_force_env(iforce_eval)%force_env%qs_env)) THEN
@@ -2224,7 +2231,7 @@ CONTAINS
          CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_total, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env)
 
          ! Copy reference Kohn-Sham matrix and its submatrtices
-         CALL copy_ks_to_pbpe(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, opt_pbpe)
+         CALL copy_ks_from_qs_to_pbpe(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, opt_pbpe)
 
          ! Update subsystem 1
          CALL calculate_embedded_ks_matrix(opt_pbpe, subsys_num=1)
@@ -2244,10 +2251,14 @@ CONTAINS
 
          CALL pbpe_low_level_loop_print(force_env, opt_pbpe)
 
-         WRITE (output_unit, '(A)') ""
-         WRITE (output_unit, '(A, ES15.6)') "norm_dm_1_diff=", opt_pbpe%norm_dm_1_diff 
-         WRITE (output_unit, '(A, ES15.6)') "norm_dm_2_diff=", opt_pbpe%norm_dm_2_diff
-         WRITE (output_unit, '(A, ES15.6)') "norm_dm_total_diff=", opt_pbpe%norm_dm_total_diff
+         WRITE (output_unit, '(A, I0)') "iter= ", i_iter
+         WRITE (output_unit, '(A, ES15.6)') "max_in_dm_1_diff= ", opt_pbpe%max_in_dm_1_diff 
+         WRITE (output_unit, '(A, ES15.6)') "max_in_dm_2_diff= ", opt_pbpe%max_in_dm_2_diff
+         WRITE (output_unit, '(A, ES15.6)') "max_in_dm_total_diff= ", opt_pbpe%max_in_dm_total_diff
+         WRITE (output_unit, '(A, ES15.6)') "norm_dm_1_diff= ", opt_pbpe%norm_dm_1_diff 
+         WRITE (output_unit, '(A, ES15.6)') "norm_dm_2_diff= ", opt_pbpe%norm_dm_2_diff
+         WRITE (output_unit, '(A, ES15.6)') "norm_dm_total_diff= ", opt_pbpe%norm_dm_total_diff
+
 
          CALL check_pbpe_low_level_convergence(opt_pbpe)
 
@@ -2257,11 +2268,13 @@ CONTAINS
 
       END DO low_level_loop
 
+      IF (.NOT. opt_pbpe%low_level_converged) THEN
+         CPABORT("Low-level PBPE embedding not converged")
+      END IF
+
       CALL pbpe_summary_print(opt_pbpe, output_unit)
 
       CALL release_pbpe_opt(opt_pbpe)
-
-      CPASSERT(.FALSE.)
 
 !      WRITE (output_unit, '(A)') ""
 !      ! Get MO sets

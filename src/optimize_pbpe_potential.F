@@ -65,7 +65,7 @@ MODULE optimize_pbpe_potential
                                               
    PUBLIC :: build_pbpe_subsys_dm, build_pbpe_ref_subsys_dm, check_pbpe_system, &
              calculate_embedded_ks_matrix, calculate_pbpe_dm_difference, &
-             check_pbpe_low_level_convergence, copy_ks_to_pbpe, &
+             check_pbpe_low_level_convergence, copy_ks_from_qs_to_pbpe, &
              pbpe_do_diagonalization, pbpe_initialization_print, &
              pbpe_low_level_loop_print, pbpe_summary_print, prepare_pbpe_opt, &
              release_pbpe_opt, update_pbpe_density_and_ks_qs_env
@@ -212,6 +212,9 @@ CONTAINS
       opt_pbpe%norm_dm_1_diff = cp_fm_norm(opt_pbpe%dm_1_diff, 'F')
       opt_pbpe%norm_dm_2_diff = cp_fm_norm(opt_pbpe%dm_2_diff, 'F')
       opt_pbpe%norm_dm_total_diff = cp_fm_norm(opt_pbpe%dm_total_diff, 'F')
+      opt_pbpe%max_in_dm_1_diff = cp_fm_norm(opt_pbpe%dm_1_diff, 'M')
+      opt_pbpe%max_in_dm_2_diff = cp_fm_norm(opt_pbpe%dm_2_diff, 'M')
+      opt_pbpe%max_in_dm_total_diff = cp_fm_norm(opt_pbpe%dm_total_diff, 'M')
 
    END SUBROUTINE calculate_pbpe_dm_difference
 
@@ -297,11 +300,11 @@ CONTAINS
       END IF 
 
       ! Check numbers of AOs in different subsystems
-      !IF (naos(1) + naos(2) .NE. naos(3)) THEN
-      !   CPABORT("The sum of nAOs in two low-level subsystem does not equal to nAOs in the total system.")
-      !ELSE IF (naos(2) .NE. naos(4)) THEN
-      !   CPABORT("The low-level and high-level calculations should use the same basis set.")
-      !END IF
+      IF (naos(1) + naos(2) .NE. naos(3)) THEN
+         CPABORT("The sum of nAOs in two low-level subsystems does not equal to  in the total system.")
+      ELSE IF (naos(2) .NE. naos(4)) THEN
+         CPABORT("The low-level and high-level calculations should use the same basis set.")
+      END IF
 
       DEALLOCATE (naos)
       DEALLOCATE (nmos)
@@ -315,7 +318,7 @@ CONTAINS
 !> \param qs_env ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
-   SUBROUTINE copy_ks_to_pbpe(qs_env, opt_pbpe)
+   SUBROUTINE copy_ks_from_qs_to_pbpe(qs_env, opt_pbpe)
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
@@ -336,7 +339,7 @@ CONTAINS
       CALL cp_fm_to_fm_submat(opt_pbpe%ks_total, opt_pbpe%ks_21, opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
                               opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1, 1)
 
-      END SUBROUTINE copy_ks_to_pbpe
+      END SUBROUTINE copy_ks_from_qs_to_pbpe
 
 ! **************************************************************************************************
 !> \brief ...

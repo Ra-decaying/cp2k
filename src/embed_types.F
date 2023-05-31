@@ -136,6 +136,7 @@ MODULE embed_types
                                                           do_kpoints, open_shell_embed
       REAL(KIND=dp)                                    :: conv_max, conv_rmse, &
                                                           homo_energy_1, homo_energy_2, fermi_energy, &
+                                                          max_in_dm_1_diff, max_in_dm_2_diff, max_in_dm_total_diff, &
                                                           norm_dm_1_diff, norm_dm_2_diff, norm_dm_total_diff
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)         :: max_diff
       TYPE(cp_fm_type), POINTER                        :: dm_1 => NULL(), dm_2 => NULL(), dm_total => NULL(), &
