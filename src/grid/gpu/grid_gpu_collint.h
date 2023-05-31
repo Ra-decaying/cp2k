@@ -82,10 +82,47 @@ __device__ static void atomicAddDouble(double *address, double val) {
 }
 
 /*******************************************************************************
+ * \brief Cab matrix container to be passed through prepare_pab to cab_add.
+ * \author Ole Schuett
+ ******************************************************************************/
+typedef struct {
+  double *data;
+  const int n1;
+  const int mask[2];
+} cab_store;
+
+/*******************************************************************************
+ * \brief Returns matrix element cab[idx(b)][idx(a)].
+ * \author Ole Schuett
+ ******************************************************************************/
+__device__ static inline double cab_get(const cab_store *cab, const orbital a,
+                                        const orbital b) {
+  const int i = idx(b) * cab->n1 + idx(a);
+  if (cab->mask[0] <= i && i < cab->mask[1]) {
+    return cab->data[i - cab->mask[0]];
+  } else {
+    return 0.0;
+  }
+}
+
+/*******************************************************************************
+ * \brief Adds given value to matrix element cab[idx(b)][idx(a)].
+ * \author Ole Schuett
+ ******************************************************************************/
+__device__ static inline void cab_add(cab_store *cab, const orbital a,
+                                      const orbital b, const double value) {
+  const int i = idx(b) * cab->n1 + idx(a);
+  if (cab->mask[0] <= i && i < cab->mask[1]) {
+    atomicAddDouble(&cab->data[i - cab->mask[0]], value);
+  }
+}
+
+/*******************************************************************************
  * \brief Parameters of the collocate kernel.
  * \author Ole Schuett
  ******************************************************************************/
 typedef struct {
+  int smem_cab_length;
   int smem_cab_offset;
   int smem_alpha_offset;
   int smem_cxyz_offset;
@@ -360,7 +397,7 @@ __device__ static void compute_alpha(const smem_task *task, double *alpha) {
  * \author Ole Schuett
  ******************************************************************************/
 __device__ static void cab_to_cxyz(const smem_task *task, const double *alpha,
-                                   GRID_CONST_WHEN_COLLOCATE double *cab,
+                                   GRID_CONST_WHEN_COLLOCATE cab_store *cab,
                                    GRID_CONST_WHEN_INTEGRATE double *cxyz) {
 
   //   *** initialise the coefficient matrix, we transform the sum
@@ -390,17 +427,24 @@ __device__ static void cab_to_cxyz(const smem_task *task, const double *alpha,
       for (int lxp = threadIdx.x; lxp <= task->lp - lzp - lyp;
            lxp += blockDim.x) {
         double reg = 0.0; // accumulate into a register
-        for (int jco = 0; jco < ncoset(task->lb_max); jco++) {
+        const int jco_start = ncoset(task->lb_min - 1);
+        const int jco_end = ncoset(task->lb_max);
+        for (int jco = jco_start; jco < jco_end; jco++) {
           const orbital b = coset_inv[jco];
-          for (int ico = 0; ico < ncoset(task->la_max); ico++) {
+          const int ico_start = ncoset(task->la_min - 1);
+          const int ico_end = ncoset(task->la_max);
+          for (int ico = ico_start; ico < ico_end; ico++) {
             const orbital a = coset_inv[ico];
 #else
   // integrate
   if (threadIdx.z == 0) { // TODO: How bad is this?
-    for (int jco = threadIdx.y; jco < ncoset(task->lb_max); jco += blockDim.y) {
+    const int jco_start = ncoset(task->lb_min - 1) + threadIdx.y;
+    const int jco_end = ncoset(task->lb_max);
+    for (int jco = jco_start; jco < jco_end; jco += blockDim.y) {
       const orbital b = coset_inv[jco];
-      for (int ico = threadIdx.x; ico < ncoset(task->la_max);
-           ico += blockDim.x) {
+      const int ico_start = ncoset(task->la_min - 1) + threadIdx.x;
+      const int ico_end = ncoset(task->la_max);
+      for (int ico = ico_start; ico < ico_end; ico += blockDim.x) {
         const orbital a = coset_inv[ico];
         double reg = 0.0; // accumulate into a register
         for (int lzp = 0; lzp <= task->lp; lzp++) {
@@ -414,7 +458,7 @@ __device__ static void cab_to_cxyz(const smem_task *task, const double *alpha,
                              alpha[2 * s1 + b.l[2] * s2 + a.l[2] * s3 + lzp];
 
 #if (GRID_DO_COLLOCATE)
-            reg += p * cab[jco * task->n1 + ico]; // collocate
+            reg += p * cab_get(cab, a, b); // collocate
 #else
               reg += p * cxyz[coset(lxp, lyp, lzp)]; // integrate
 #endif
@@ -428,7 +472,7 @@ __device__ static void cab_to_cxyz(const smem_task *task, const double *alpha,
 #else
           // integrate
         }
-        cab[jco * task->n1 + ico] = reg; // partial loop coverage -> zero it
+        cab_add(cab, a, b, reg); // partial loop coverage -> zero it
       }
 #endif
     }
@@ -440,12 +484,11 @@ __device__ static void cab_to_cxyz(const smem_task *task, const double *alpha,
  * \brief Initializes the cab matrix with zeros.
  * \author Ole Schuett
  ******************************************************************************/
-__device__ static void zero_cab(const smem_task *task, double *cab) {
-  if (threadIdx.z == 0) {
-    for (int i = threadIdx.y; i < task->n2; i += blockDim.y) {
-      for (int j = threadIdx.x; j < task->n1; j += blockDim.x) {
-        cab[i * task->n1 + j] = 0.0;
-      }
+__device__ static void zero_cab(cab_store *cab) {
+  const int n = cab->mask[1] - cab->mask[0];
+  if (threadIdx.z == 0 && threadIdx.y == 0) {
+    for (int i = threadIdx.x; i < n; i += blockDim.x) {
+      cab->data[i] = 0.0;
     }
   }
   __syncthreads(); // because of concurrent writes to cab
