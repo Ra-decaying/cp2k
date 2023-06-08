@@ -66,8 +66,8 @@ MODULE optimize_pbpe_potential
    PUBLIC :: build_pbpe_subsys_dm, build_pbpe_ref_subsys_dm, check_pbpe_system, &
              calculate_embedded_ks_matrix, calculate_pbpe_dm_difference, &
              check_pbpe_low_level_convergence, copy_ks_from_qs_to_pbpe, &
-             pbpe_do_diagonalization, pbpe_initialization_print, &
-             pbpe_low_level_loop_print, pbpe_summary_print, prepare_pbpe_opt, &
+             pbpe_do_diagonalization, pbpe_print_initialization_info, &
+             pbpe_print_loop_info, pbpe_print_summary_info, prepare_pbpe_opt, &
              release_pbpe_opt, update_pbpe_density_and_ks_qs_env
 
 CONTAINS
@@ -722,11 +722,11 @@ CONTAINS
 !> \param force_env ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
-   SUBROUTINE pbpe_initialization_print(force_env, opt_pbpe)
+   SUBROUTINE pbpe_print_initialization_info(force_env, opt_pbpe)
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
-      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_initial_print'
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_print_initialization_info'
 
       INTEGER                                            :: after, iw
       LOGICAL                                            :: omit_headers
@@ -772,18 +772,18 @@ CONTAINS
          CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/OVERLAP")
       END IF
 
-   END SUBROUTINE pbpe_initialization_print
+   END SUBROUTINE pbpe_print_initialization_info
 
 ! **************************************************************************************************
 !> \brief ...
 !> \param force_env ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
-   SUBROUTINE pbpe_low_level_loop_print(force_env, opt_pbpe)
+   SUBROUTINE pbpe_print_loop_info(force_env, opt_pbpe)
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
-      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_low_level_loop_print'
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_print_loop_info'
 
       INTEGER                                            :: after, iw
       LOGICAL                                            :: omit_headers
@@ -837,21 +837,21 @@ CONTAINS
          CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX")
       END IF
 
-   END SUBROUTINE pbpe_low_level_loop_print
+   END SUBROUTINE pbpe_print_loop_info
 
 ! **************************************************************************************************
 !> \brief ...
 !> \param opt_pbpe ...
 !> \param output_unit ...
 ! **************************************************************************************************
-   SUBROUTINE pbpe_summary_print(opt_pbpe, output_unit)
+   SUBROUTINE pbpe_print_summary_info(opt_pbpe, output_unit)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       INTEGER                                            :: output_unit
    
-      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_summary_print'
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_print_summary_info'
 
 
-   END SUBROUTINE pbpe_summary_print
+   END SUBROUTINE pbpe_print_summary_info
 
 ! **************************************************************************************************
 !> \brief ...

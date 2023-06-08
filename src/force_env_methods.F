@@ -131,9 +131,9 @@ MODULE force_env_methods
                                               calculate_pbpe_dm_difference,&
                                               copy_ks_from_qs_to_pbpe,&
                                               pbpe_do_diagonalization,&
-                                              pbpe_initialization_print,&
-                                              pbpe_low_level_loop_print,&
-                                              pbpe_summary_print,&
+                                              pbpe_print_initialization_info,&
+                                              pbpe_print_loop_info,&
+                                              pbpe_print_summary_info,&
                                               prepare_pbpe_opt,&
                                               release_pbpe_opt,&
                                               update_pbpe_density_and_ks_qs_env
@@ -2222,7 +2222,7 @@ CONTAINS
       CALL prepare_pbpe_opt(force_env, opt_pbpe, opt_pbpe_section)
 
       ! Print information after initialization
-      CALL pbpe_initialization_print(force_env, opt_pbpe)
+      CALL pbpe_print_initialization_info(force_env, opt_pbpe)
 
       ! Low-level iterative optimization
       low_level_loop: DO i_iter = 1, opt_pbpe%n_iter
@@ -2249,7 +2249,7 @@ CONTAINS
          ! Calculate density matrix difference
          CALL calculate_pbpe_dm_difference(opt_pbpe)
 
-         CALL pbpe_low_level_loop_print(force_env, opt_pbpe)
+         CALL pbpe_print_loop_info(force_env, opt_pbpe)
 
          WRITE (output_unit, '(A, I0)') "iter= ", i_iter
          WRITE (output_unit, '(A, ES15.6)') "max_in_dm_1_diff= ", opt_pbpe%max_in_dm_1_diff 
@@ -2272,7 +2272,7 @@ CONTAINS
          CPABORT("Low-level PBPE embedding not converged")
       END IF
 
-      CALL pbpe_summary_print(opt_pbpe, output_unit)
+      CALL pbpe_print_summary_info(opt_pbpe, output_unit)
 
       CALL release_pbpe_opt(opt_pbpe)
 
