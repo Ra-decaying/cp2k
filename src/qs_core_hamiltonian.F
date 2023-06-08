@@ -172,7 +172,7 @@ CONTAINS
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(dbcsr_distribution_type), POINTER             :: dbcsr_dist
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrix_h, matrix_p, matrix_s, matrix_t, &
-                                                            matrix_w
+                                                            matrix_w, matrix_v_proj_emb
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(kg_environment_type), POINTER                 :: kg_env
       TYPE(kpoint_type), POINTER                         :: kpoints
@@ -377,6 +377,17 @@ CONTAINS
             use_virial = virial%pv_availability .AND. (.NOT. virial%pv_numer)
             CALL build_tnadd_mat(kg_env, matrix_p, force, virial, calculate_forces, use_virial, &
                                  qs_kind_set, atomic_kind_set, particle_set, sab_orb, dbcsr_dist)
+         END IF
+      END IF
+
+      ! *** projection-based embedding potentials for DFT
+      IF (dft_control%qs_control%high_level_embed_subsys) THEN
+         CALL get_qs_env(qs_env=qs_env, matrix_v_proj_emb_kp=matrix_v_proj_emb)
+         IF (ASSOCIATED(matrix_h) .AND. ASSOCIATED(matrix_v_proj_emb)) THEN
+            DO img = 1, nimages
+               CALL dbcsr_add(matrix_h(1, img)%matrix, matrix_v_proj_emb(1, img)%matrix, &
+                              alpha_scalar=1.0_dp, beta_scalar=1.0_dp)
+            END DO
          END IF
       END IF
 

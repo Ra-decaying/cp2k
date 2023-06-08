@@ -360,11 +360,13 @@ CONTAINS
 !> \param matrix_s_kp ...
 !> \param matrix_w_kp ...
 !> \param matrix_s_RI_aux_kp ...
+!> \param matrix_v_proj_emb_kp ...
 !> \param matrix_s ...
 !> \param matrix_s_RI_aux ...
 !> \param matrix_w ...
 !> \param matrix_p_mp2 ...
 !> \param matrix_p_mp2_admm ...
+!> \param matrix_v_proj_emb ...
 !> \param rho ...
 !> \param rho_xc ...
 !> \param pw_env ...
@@ -474,8 +476,8 @@ CONTAINS
                          sab_xb, sab_xtb_nonbond, sab_almo, sab_kp, particle_set, energy, force, &
                          matrix_h, matrix_h_im, matrix_ks, matrix_ks_im, matrix_vxc, run_rtp, rtp, &
                          matrix_h_kp, matrix_h_im_kp, matrix_ks_kp, matrix_ks_im_kp, matrix_vxc_kp, kinetic_kp, matrix_s_kp, &
-                         matrix_w_kp, matrix_s_RI_aux_kp, matrix_s, matrix_s_RI_aux, matrix_w, &
-                         matrix_p_mp2, matrix_p_mp2_admm, rho, &
+                         matrix_w_kp, matrix_s_RI_aux_kp, matrix_v_proj_emb_kp, matrix_s, matrix_s_RI_aux, matrix_w, &
+                         matrix_p_mp2, matrix_p_mp2_admm, matrix_v_proj_emb, rho, &
                          rho_xc, pw_env, ewald_env, ewald_pw, active_space, &
                          mpools, input, para_env, blacs_env, scf_control, rel_control, kinetic, qs_charges, &
                          vppl, rho_core, rho_nlcc, rho_nlcc_g, ks_env, ks_qmmm_env, wf_history, scf_env, local_particles, &
@@ -522,10 +524,11 @@ CONTAINS
       TYPE(rt_prop_type), OPTIONAL, POINTER              :: rtp
       TYPE(dbcsr_p_type), DIMENSION(:, :), OPTIONAL, POINTER :: matrix_h_kp, matrix_h_im_kp, &
          matrix_ks_kp, matrix_ks_im_kp, matrix_vxc_kp, kinetic_kp, matrix_s_kp, matrix_w_kp, &
-         matrix_s_RI_aux_kp
+         matrix_s_RI_aux_kp, matrix_v_proj_emb_kp
       TYPE(dbcsr_p_type), DIMENSION(:), OPTIONAL, &
          POINTER                                         :: matrix_s, matrix_s_RI_aux, matrix_w, &
-                                                            matrix_p_mp2, matrix_p_mp2_admm
+                                                            matrix_p_mp2, matrix_p_mp2_admm, &
+                                                            matrix_v_proj_emb
       TYPE(qs_rho_type), OPTIONAL, POINTER               :: rho, rho_xc
       TYPE(pw_env_type), OPTIONAL, POINTER               :: pw_env
       TYPE(ewald_environment_type), OPTIONAL, POINTER    :: ewald_env
@@ -740,6 +743,7 @@ CONTAINS
                       matrix_w=matrix_w, &
                       matrix_p_mp2=matrix_p_mp2, &
                       matrix_p_mp2_admm=matrix_p_mp2_admm, &
+                      matrix_v_proj_emb=matrix_v_proj_emb, &
                       matrix_h_kp=matrix_h_kp, &
                       matrix_h_im_kp=matrix_h_im_kp, &
                       matrix_ks_kp=matrix_ks_kp, &
@@ -748,6 +752,7 @@ CONTAINS
                       matrix_s_kp=matrix_s_kp, &
                       matrix_w_kp=matrix_w_kp, &
                       matrix_s_RI_aux_kp=matrix_s_RI_aux_kp, &
+                      matrix_v_proj_emb_kp=matrix_v_proj_emb_kp, &
                       rho=rho, &
                       rho_xc=rho_xc, &
                       rho_core=rho_core, &
