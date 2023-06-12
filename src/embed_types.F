@@ -131,9 +131,8 @@ MODULE embed_types
                                                           cluster_subsys_num, environment_subsys_num, &
                                                           high_level_subsys_num, ref_subsys_num
       INTEGER, ALLOCATABLE, DIMENSION(:)               :: all_nspins, naos, naos_in_pbpe, nmos
-      LOGICAL                                          :: abs_localization, change_spin, &
-                                                          low_level_converged, high_level_converged, &
-                                                          do_kpoints, open_shell_embed
+      LOGICAL                                          :: abs_localization, change_spin, converged, &
+                                                          do_kpoints, open_shell_embed, should_exit_scf_loop
       REAL(KIND=dp)                                    :: conv_max, conv_rmse, &
                                                           homo_energy_1, homo_energy_2, fermi_energy, &
                                                           max_in_dm_1_diff, max_in_dm_2_diff, max_in_dm_total_diff, &

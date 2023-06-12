@@ -65,10 +65,11 @@ MODULE optimize_pbpe_potential
                                               
    PUBLIC :: build_pbpe_subsys_dm, build_pbpe_ref_subsys_dm, check_pbpe_system, &
              calculate_embedded_ks_matrix, calculate_pbpe_dm_difference, &
-             check_pbpe_low_level_convergence, copy_ks_from_qs_to_pbpe, &
+             copy_ks_from_qs_to_pbpe, pbpe_check_scf_exit, &
              pbpe_do_diagonalization, pbpe_print_initialization_info, &
              pbpe_print_loop_info, pbpe_print_summary_info, prepare_pbpe_opt, &
-             release_pbpe_opt, update_pbpe_density_and_ks_qs_env
+             release_pbpe_opt, set_proj_embed_pot_matrix_for_high_level, &
+             update_pbpe_density_and_ks_qs_env
 
 CONTAINS
 
@@ -115,7 +116,7 @@ CONTAINS
    SUBROUTINE build_pbpe_ref_subsys_dm(opt_pbpe, density_matrix, use_new_subsys_dm)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       TYPE(cp_fm_type), POINTER                          :: density_matrix
-      LOGICAL                                            :: use_new_subsys_dm
+      LOGICAL, INTENT(IN)                                :: use_new_subsys_dm
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'build_pbpe_ref_sys_dm'
 
@@ -142,7 +143,7 @@ CONTAINS
    END SUBROUTINE build_pbpe_ref_subsys_dm
 
 ! **************************************************************************************************
-!> \brief
+!> \brief ...
 !> \param opt_pbpe ...
 !> \param subsys_num ...
 ! **************************************************************************************************
@@ -190,7 +191,7 @@ CONTAINS
    END SUBROUTINE calculate_embedded_ks_matrix
 
 ! **************************************************************************************************
-!> \brief
+!> \brief ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
    SUBROUTINE calculate_pbpe_dm_difference(opt_pbpe)
@@ -217,25 +218,6 @@ CONTAINS
       opt_pbpe%max_in_dm_total_diff = cp_fm_norm(opt_pbpe%dm_total_diff, 'M')
 
    END SUBROUTINE calculate_pbpe_dm_difference
-
-! **************************************************************************************************
-!> \brief ...
-!> \param opt_pbpe ...
-! **************************************************************************************************
-   SUBROUTINE check_pbpe_low_level_convergence(opt_pbpe)
-      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
-
-      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'check_pbpe_low_level_convergence'
-
-      IF (opt_pbpe%norm_dm_1_diff .LT. opt_pbpe%conv_rmse .AND. &
-          opt_pbpe%norm_dm_2_diff .LT. opt_pbpe%conv_rmse .AND. &
-          opt_pbpe%norm_dm_total_diff .LT. opt_pbpe%conv_rmse) THEN
-         opt_pbpe%low_level_converged = .TRUE.
-      ELSE
-         opt_pbpe%low_level_converged = .FALSE.
-      END IF
-
-   END SUBROUTINE check_pbpe_low_level_convergence
 
 ! **************************************************************************************************
 !> \brief ...
@@ -291,8 +273,8 @@ CONTAINS
       END DO
 
       ! Check indices of different subsystems
-      IF (cluster_subsys_num .NE. 2) THEN
-         CPABORT("Cluster subsystem must be the second FORCE_EVAL.")
+      IF ((cluster_subsys_num .NE. 1) .AND. (cluster_subsys_num .NE. 2)) THEN
+         CPABORT("Cluster subsystem must be the first or second FORCE_EVAL.")
       ELSE IF (ref_subsys_num .NE. 3) THEN
          CPABORT("Reference subsystem must be the third FORCE_EVAL.")
       ELSE IF (high_level_subsys_num .NE. 4) THEN
@@ -694,6 +676,31 @@ CONTAINS
 !> \brief ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
+   SUBROUTINE pbpe_check_scf_exit(opt_pbpe, output_unit)
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+      INTEGER, INTENT(IN)                                :: output_unit
+
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_check_scf_exit'
+
+      IF (opt_pbpe%norm_dm_1_diff .LT. opt_pbpe%conv_rmse .AND. &
+          opt_pbpe%norm_dm_2_diff .LT. opt_pbpe%conv_rmse .AND. &
+          opt_pbpe%norm_dm_total_diff .LT. opt_pbpe%conv_rmse) THEN
+         opt_pbpe%converged = .TRUE.
+      ELSE
+         opt_pbpe%converged = .FALSE.
+      END IF
+
+      IF (opt_pbpe%converged .OR. (opt_pbpe%i_iter .GT. opt_pbpe%n_iter)) THEN
+         opt_pbpe%should_exit_scf_loop = .TRUE.
+      END IF
+
+   END SUBROUTINE pbpe_check_scf_exit
+
+! **************************************************************************************************
+!> \brief ...
+!> \param opt_pbpe ...
+!> \param subsys_num
+! **************************************************************************************************
    SUBROUTINE pbpe_do_diagonalization(opt_pbpe, subsys_num)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       INTEGER, INTENT(IN)                                :: subsys_num
@@ -778,10 +785,12 @@ CONTAINS
 !> \brief ...
 !> \param force_env ...
 !> \param opt_pbpe ...
+!> \param output_unit ...
 ! **************************************************************************************************
-   SUBROUTINE pbpe_print_loop_info(force_env, opt_pbpe)
+   SUBROUTINE pbpe_print_loop_info(force_env, opt_pbpe, output_unit)
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+      INTEGER, INTENT(IN)                                :: output_unit
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_print_loop_info'
 
@@ -837,6 +846,16 @@ CONTAINS
          CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX")
       END IF
 
+      IF (output_unit .LT. 0) THEN
+         WRITE (UNIT=output_unit, FMT="(/, A, I0)") "iter= ", opt_pbpe%i_iter
+         WRITE (UNIT=output_unit, FMT="(A, ES15.6)") "max_in_dm_1_diff= ", opt_pbpe%max_in_dm_1_diff 
+         WRITE (UNIT=output_unit, FMT="(A, ES15.6)") "max_in_dm_2_diff= ", opt_pbpe%max_in_dm_2_diff
+         WRITE (UNIT=output_unit, FMT="(A, ES15.6)") "max_in_dm_total_diff= ", opt_pbpe%max_in_dm_total_diff
+         WRITE (UNIT=output_unit, FMT="(A, ES15.6)") "norm_dm_1_diff= ", opt_pbpe%norm_dm_1_diff 
+         WRITE (UNIT=output_unit, FMT="(A, ES15.6)") "norm_dm_2_diff= ", opt_pbpe%norm_dm_2_diff
+         WRITE (UNIT=output_unit, FMT="(A, ES15.6)") "norm_dm_total_diff= ", opt_pbpe%norm_dm_total_diff
+      END IF
+
    END SUBROUTINE pbpe_print_loop_info
 
 ! **************************************************************************************************
@@ -846,10 +865,16 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE pbpe_print_summary_info(opt_pbpe, output_unit)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
-      INTEGER                                            :: output_unit
+      INTEGER, INTENT(IN)                                :: output_unit
    
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_print_summary_info'
 
+      IF ((opt_pbpe%converged) .AND. (output_unit .LT. 0)) THEN
+         WRITE (UNIT=output_unit, FMT="(/,T2,A)") REPEAT("*", 79)
+         WRITE (UNIT=output_unit, FMT="(T2,A,T25,A,T78,A)") &
+            "***", "EMBEDDING POTENTIAL OPTIMIZATION COMPLETED", "***"
+         WRITE (UNIT=output_unit, FMT="(T2,A)") REPEAT("*", 79)
+      END IF 
 
    END SUBROUTINE pbpe_print_summary_info
 
@@ -1243,25 +1268,36 @@ CONTAINS
 
 ! **************************************************************************************************
 !> \brief ...
+!> \param force_env ...
+!> \param opt_pbpe ...
+! **************************************************************************************************
+   SUBROUTINE set_proj_embed_pot_matrix_for_high_level(force_env, opt_pbpe)
+      TYPE(force_env_type), POINTER                      :: force_env
+      TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+
+   END SUBROUTINE set_proj_embed_pot_matrix_for_high_level
+
+! **************************************************************************************************
+!> \brief ...
 !> \param density_matrix ...
 !> \param qs_env ...
 ! **************************************************************************************************
    SUBROUTINE update_pbpe_density_and_ks_qs_env(density_matrix, qs_env)
-   TYPE(cp_fm_type), INTENT(IN)                          :: density_matrix
-   TYPE(qs_environment_type), POINTER                    :: qs_env
+      TYPE(cp_fm_type), INTENT(IN)                          :: density_matrix
+      TYPE(qs_environment_type), POINTER                    :: qs_env
 
-   CHARACTER(LEN=*), PARAMETER                           :: routineN = 'update_pbpe_density_and_ks_qs_env'
+      CHARACTER(LEN=*), PARAMETER                           :: routineN = 'update_pbpe_density_and_ks_qs_env'
 
-   TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER           :: rho_ao_kp
-   TYPE(qs_ks_env_type), POINTER                         :: ks_env
-   TYPE(qs_rho_type), POINTER                            :: rho
-   TYPE(qs_scf_env_type), POINTER                        :: scf_env 
+      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER           :: rho_ao_kp
+      TYPE(qs_ks_env_type), POINTER                         :: ks_env
+      TYPE(qs_rho_type), POINTER                            :: rho
+      TYPE(qs_scf_env_type), POINTER                        :: scf_env 
 
-   CALL get_qs_env(qs_env, ks_env=ks_env, rho=rho, scf_env=scf_env)
-   CALL qs_rho_get(rho, rho_ao_kp=rho_ao_kp)
-   CALL copy_fm_to_dbcsr(density_matrix, rho_ao_kp(1, 1)%matrix)
-   CALL qs_scf_rho_update(rho, qs_env, scf_env, ks_env, .FALSE.)
-   CALL qs_ks_update_qs_env(qs_env, just_energy=.FALSE., calculate_forces=.FALSE., print_active=.TRUE.)
+      CALL get_qs_env(qs_env, ks_env=ks_env, rho=rho, scf_env=scf_env)
+      CALL qs_rho_get(rho, rho_ao_kp=rho_ao_kp)
+      CALL copy_fm_to_dbcsr(density_matrix, rho_ao_kp(1, 1)%matrix)
+      CALL qs_scf_rho_update(rho, qs_env, scf_env, ks_env, .FALSE.)
+      CALL qs_ks_update_qs_env(qs_env, just_energy=.FALSE., calculate_forces=.FALSE., print_active=.TRUE.)
 
    END SUBROUTINE update_pbpe_density_and_ks_qs_env
 
