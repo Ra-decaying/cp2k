@@ -2226,9 +2226,8 @@ CONTAINS
       CALL pbpe_print_initialization_info(force_env, opt_pbpe)
 
       ! Low-level iterative optimization
-      low_level_loop: DO 
-
-         opt_pbpe%i_iter = opt_pbpe%i_iter + 1
+      low_level_loop:  DO i_iter = 1, opt_pbpe%n_iter
+         opt_pbpe%i_iter = i_iter 
 
          ! Copy total density matrix and Kohn-Sham matrix to qs_env
          CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_total, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env)
@@ -2266,7 +2265,7 @@ CONTAINS
          CPABORT("Low-level PBPE embedding not converged")
       END IF
 
-      CALL pbpe_print_summary_info(opt_pbpe, output_unit)
+      CALL pbpe_print_summary_info(force_env, opt_pbpe, output_unit)
 
       CALL release_pbpe_opt(opt_pbpe)
 

@@ -10,7 +10,8 @@ MODULE optimize_pbpe_potential
                                               cp_blacs_env_release,&
                                               cp_blacs_env_type
    USE cp_control_types,                ONLY: dft_control_type
-   USE cp_dbcsr_operations,             ONLY: copy_dbcsr_to_fm,&
+   USE cp_dbcsr_operations,             ONLY: dbcsr_allocate_matrix_set,&
+                                              copy_dbcsr_to_fm,&
                                               copy_fm_to_dbcsr
    USE cp_dbcsr_output,                 ONLY: write_fm_with_basis_info
    USE cp_fm_basic_linalg,              ONLY: cp_fm_geadd,&
@@ -32,7 +33,8 @@ MODULE optimize_pbpe_potential
                                               cp_print_key_finished_output,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE dbcsr_api,                       ONLY: dbcsr_p_type
+   USE dbcsr_api,                       ONLY: dbcsr_create,&
+                                              dbcsr_p_type
    USE embed_types,                     ONLY: opt_pbpe_pot_type
    USE force_env_types,                 ONLY: force_env_type
    USE input_section_types,             ONLY: section_vals_type,&
@@ -53,6 +55,7 @@ MODULE optimize_pbpe_potential
                                               qs_rho_type
    USE qs_scf_loop_utils,               ONLY: qs_scf_rho_update
    USE qs_scf_methods,                  ONLY: eigensolver_symm
+   USE qs_scf_output,                   ONLY: qs_scf_print_summary
    USE qs_scf_types,                    ONLY: qs_scf_env_type
 #include "./base/base_uses.f90"
 
@@ -134,7 +137,7 @@ CONTAINS
          CALL cp_fm_to_fm_submat(dm_1, density_matrix, opt_pbpe%naos(1), opt_pbpe%naos(1), &
                                  1, 1, 1, 1)
          CALL cp_fm_to_fm_submat(dm_2, density_matrix, opt_pbpe%naos(2), opt_pbpe%naos(2), &
-                                 1, 1, opt_pbpe%naos(2) + 1, opt_pbpe%naos(2) + 1)
+                                 1, 1, opt_pbpe%naos(1) + 1, opt_pbpe%naos(1) + 1)
       ELSE
          CALL cp_fm_to_fm(opt_pbpe%dm_1, density_matrix)
          CALL cp_fm_scale_and_add(1.0_dp, density_matrix, 1.0_dp, opt_pbpe%dm_2)
@@ -760,6 +763,14 @@ CONTAINS
       after = MIN(MAX(after, 1), 16)
 
       IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY"), cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY", extension=".Log")
+         CALL write_fm_with_basis_info(opt_pbpe%dm_total, 4, after, qs_env=qs_env_ref, &
+                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY")
+      END IF
+
+      IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
                                            "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO"), cp_p_file)) THEN
          iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO", extension=".Log")
          CALL write_fm_with_basis_info(opt_pbpe%ortho_1, 4, after, qs_env=qs_env_1, &
@@ -846,7 +857,7 @@ CONTAINS
          CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX")
       END IF
 
-      IF (output_unit .LT. 0) THEN
+      IF (output_unit .GT. 0) THEN
          WRITE (UNIT=output_unit, FMT="(/, A, I0)") "iter= ", opt_pbpe%i_iter
          WRITE (UNIT=output_unit, FMT="(A, ES15.6)") "max_in_dm_1_diff= ", opt_pbpe%max_in_dm_1_diff 
          WRITE (UNIT=output_unit, FMT="(A, ES15.6)") "max_in_dm_2_diff= ", opt_pbpe%max_in_dm_2_diff
@@ -860,16 +871,21 @@ CONTAINS
 
 ! **************************************************************************************************
 !> \brief ...
+!> \param force_env ...
 !> \param opt_pbpe ...
 !> \param output_unit ...
 ! **************************************************************************************************
-   SUBROUTINE pbpe_print_summary_info(opt_pbpe, output_unit)
+   SUBROUTINE pbpe_print_summary_info(force_env, opt_pbpe, output_unit)
+      TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       INTEGER, INTENT(IN)                                :: output_unit
    
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_print_summary_info'
 
-      IF ((opt_pbpe%converged) .AND. (output_unit .LT. 0)) THEN
+      CALL qs_scf_print_summary(output_unit, force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env)
+      CALL qs_scf_print_summary(output_unit, force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env)
+
+      IF ((opt_pbpe%converged) .AND. (output_unit .GT. 0)) THEN
          WRITE (UNIT=output_unit, FMT="(/,T2,A)") REPEAT("*", 79)
          WRITE (UNIT=output_unit, FMT="(T2,A,T25,A,T78,A)") &
             "***", "EMBEDDING POTENTIAL OPTIMIZATION COMPLETED", "***"
@@ -1275,6 +1291,22 @@ CONTAINS
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
+      TYPE(qs_environment_type), POINTER                 :: qs_env_cluster, qs_env_high_level
+      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: matrix_h_kp, matrix_ks_kp, &
+                                                            matrix_v_proj_emb_kp
+
+
+      qs_env_cluster => force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env
+      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_2, qs_env_cluster)
+      CALL get_qs_env(qs_env_cluster, matrix_h_kp=matrix_h_kp, matrix_ks_kp=matrix_ks_kp)
+
+      qs_env_high_level => force_env%sub_force_env(opt_pbpe%high_level_subsys_num)%force_env%qs_env
+      CALL get_qs_env(qs_env_high_level, matrix_v_proj_emb_kp=matrix_v_proj_emb_kp)
+      CALL dbcsr_allocate_matrix_set(matrix_v_proj_emb_kp, 1, 1)
+      CALL dbcsr_create(matrix_v_proj_emb_kp(1, 1)%matrix, name="PROJECTION AND EMBEDDING POTENTIAL", &
+                        template=matrix_h_kp(1, 1)%matrix)
+      
+
    END SUBROUTINE set_proj_embed_pot_matrix_for_high_level
 
 ! **************************************************************************************************
@@ -1283,15 +1315,15 @@ CONTAINS
 !> \param qs_env ...
 ! **************************************************************************************************
    SUBROUTINE update_pbpe_density_and_ks_qs_env(density_matrix, qs_env)
-      TYPE(cp_fm_type), INTENT(IN)                          :: density_matrix
-      TYPE(qs_environment_type), POINTER                    :: qs_env
+      TYPE(cp_fm_type), INTENT(IN)                       :: density_matrix
+      TYPE(qs_environment_type), POINTER                 :: qs_env
 
-      CHARACTER(LEN=*), PARAMETER                           :: routineN = 'update_pbpe_density_and_ks_qs_env'
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'update_pbpe_density_and_ks_qs_env'
 
-      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER           :: rho_ao_kp
-      TYPE(qs_ks_env_type), POINTER                         :: ks_env
-      TYPE(qs_rho_type), POINTER                            :: rho
-      TYPE(qs_scf_env_type), POINTER                        :: scf_env 
+      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: rho_ao_kp
+      TYPE(qs_ks_env_type), POINTER                      :: ks_env
+      TYPE(qs_rho_type), POINTER                         :: rho
+      TYPE(qs_scf_env_type), POINTER                     :: scf_env 
 
       CALL get_qs_env(qs_env, ks_env=ks_env, rho=rho, scf_env=scf_env)
       CALL qs_rho_get(rho, rho_ao_kp=rho_ao_kp)
