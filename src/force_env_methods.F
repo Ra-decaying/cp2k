@@ -131,11 +131,13 @@ MODULE force_env_methods
                                               copy_ks_from_qs_to_pbpe,&
                                               pbpe_check_scf_exit,&
                                               pbpe_do_diagonalization,&
+                                              pbpe_mix_matrices,&
                                               pbpe_print_initialization_info,&
                                               pbpe_print_loop_info,&
                                               pbpe_print_summary_info,&
                                               prepare_pbpe_opt,&
                                               release_pbpe_opt,&
+                                              set_proj_embed_pot_matrix_for_high_level,&
                                               update_pbpe_density_and_ks_qs_env
    USE particle_list_types,             ONLY: particle_list_p_type,&
                                               particle_list_type
@@ -1512,8 +1514,8 @@ CONTAINS
                CALL get_qs_env(qs_env=force_env%sub_force_env(iforce_eval)%force_env%qs_env, &
                                embed_pot=embed_pot, spin_embed_pot=spin_embed_pot, pw_env=pw_env)
                CALL pw_env_get(pw_env, auxbas_pw_pool=auxbas_pw_pool)
-               CALL pw_pool_give_back_pw(auxbas_pw_pool, embed_pot)
                IF (ASSOCIATED(embed_pot)) THEN
+                  CALL pw_pool_give_back_pw(auxbas_pw_pool, embed_pot)
                   CALL pw_release(embed_pot)
                   DEALLOCATE (embed_pot)
                END IF
@@ -2168,12 +2170,10 @@ CONTAINS
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_embedding'
 
-      CHARACTER(LEN=default_string_length)               :: name
-      INTEGER                                            :: handle, n_dep_A, n_dep_B, & 
+      INTEGER                                            :: handle, & 
                                                             i_force_eval, i_iter, i_spin, &
                                                             nforce_eval, nspins, nspins_subsys, &
                                                             output_unit
-      INTEGER, DIMENSION(:), POINTER                     :: naos, nmos, natoms
       LOGICAL                                            :: do_kpoints, absolute_localization
       REAL(KIND=dp)                                      :: cluster_energy, fermi_energy, &
                                                             HOMO_energy_A, HOMO_energy_B, &
@@ -2183,9 +2183,6 @@ CONTAINS
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       TYPE(qs_energy_type), POINTER                      :: energy
-!      TYPE(qs_ks_env_type), POINTER                      :: ks_env_ref
-      TYPE(qs_rho_type), POINTER                         :: rho, subsys_rho, &
-                                                            rho_A, rho_B, rho_ref
       TYPE(section_vals_type), POINTER                   :: dft_section, input, opt_pbpe_section
 
       CALL timeset(routineN, handle)
@@ -2206,6 +2203,7 @@ CONTAINS
 
       CALL get_qs_env(qs_env=force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, &
                       dft_control=dft_control, energy=energy, input=input)
+      energies(ref_subsys_number) = energy%total
       nspins = dft_control%nspins
 
       dft_section => section_vals_get_subs_vals(input, "DFT")
@@ -2235,18 +2233,21 @@ CONTAINS
          ! Copy reference Kohn-Sham matrix and its submatrtices
          CALL copy_ks_from_qs_to_pbpe(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, opt_pbpe)
 
-         ! Update subsystem 1
-         CALL calculate_embedded_ks_matrix(opt_pbpe, subsys_num=1)
-         CALL pbpe_do_diagonalization(opt_pbpe, subsys_num=1)
-         CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=1, density_matrix=opt_pbpe%dm_1_new)
-
          ! Update subsystem 2
          CALL calculate_embedded_ks_matrix(opt_pbpe, subsys_num=2)
          CALL pbpe_do_diagonalization(opt_pbpe, subsys_num=2)
          CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=2, density_matrix=opt_pbpe%dm_2_new)
 
+         ! Update subsystem 1
+         CALL calculate_embedded_ks_matrix(opt_pbpe, subsys_num=1)
+         CALL pbpe_do_diagonalization(opt_pbpe, subsys_num=1)
+         CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=1, density_matrix=opt_pbpe%dm_1_new)
+
          ! Update total density matrix
          CALL build_pbpe_ref_subsys_dm(opt_pbpe, density_matrix=opt_pbpe%dm_total_new, use_new_subsys_dm=.TRUE.)
+
+         ! Mix PBPE matrices with history
+         CALL pbpe_mix_matrices(opt_pbpe)
 
          ! Calculate density matrix difference
          CALL calculate_pbpe_dm_difference(opt_pbpe)
@@ -2265,13 +2266,23 @@ CONTAINS
          CPABORT("Low-level PBPE embedding not converged")
       END IF
 
+      CALL set_proj_embed_pot_matrix_for_high_level(force_env, opt_pbpe)
+
+      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_1, force_env%sub_force_env(1)%force_env%qs_env)
+      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_2, force_env%sub_force_env(2)%force_env%qs_env)
+      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_total, force_env%sub_force_env(3)%force_env%qs_env)
+
       CALL pbpe_print_summary_info(force_env, opt_pbpe, output_unit)
+
+      ! temporary
+      CALL get_qs_env(qs_env=force_env%sub_force_env(2)%force_env%qs_env, energy=energy)
+      energies(2) = energy%total
 
       CALL release_pbpe_opt(opt_pbpe)
 
-      CPABORT("TEST ENDS")
-
       CALL timestop(handle)
+
+      converged_embed = opt_pbpe%converged
 
    END SUBROUTINE pbpe_embedding
 

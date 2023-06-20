@@ -45,7 +45,8 @@ MODULE optimize_pbpe_potential
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
    USE qs_ks_methods,                   ONLY: qs_ks_update_qs_env
-   USE qs_ks_types,                     ONLY: qs_ks_env_type
+   USE qs_ks_types,                     ONLY: qs_ks_env_type,&
+                                              set_ks_env
    USE qs_mo_types,                     ONLY: deallocate_mo_set,&
                                               duplicate_mo_set,&
                                               get_mo_set,&
@@ -68,8 +69,8 @@ MODULE optimize_pbpe_potential
                                               
    PUBLIC :: build_pbpe_subsys_dm, build_pbpe_ref_subsys_dm, check_pbpe_system, &
              calculate_embedded_ks_matrix, calculate_pbpe_dm_difference, &
-             copy_ks_from_qs_to_pbpe, pbpe_check_scf_exit, &
-             pbpe_do_diagonalization, pbpe_print_initialization_info, &
+             copy_ks_from_qs_to_pbpe, pbpe_check_scf_exit, pbpe_do_diagonalization, &
+             pbpe_mix_matrices, pbpe_print_initialization_info, &
              pbpe_print_loop_info, pbpe_print_summary_info, prepare_pbpe_opt, &
              release_pbpe_opt, set_proj_embed_pot_matrix_for_high_level, &
              update_pbpe_density_and_ks_qs_env
@@ -85,7 +86,7 @@ CONTAINS
    SUBROUTINE build_pbpe_subsys_dm(opt_pbpe, subsys_num, density_matrix)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
       INTEGER, INTENT(IN)                                :: subsys_num
-      TYPE(cp_fm_type), POINTER                          :: density_matrix
+      TYPE(cp_fm_type), INTENT(INOUT)                    :: density_matrix
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'build_pbpe_subsys_dm'
 
@@ -118,7 +119,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE build_pbpe_ref_subsys_dm(opt_pbpe, density_matrix, use_new_subsys_dm)
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
-      TYPE(cp_fm_type), POINTER                          :: density_matrix
+      TYPE(cp_fm_type), INTENT(INOUT)                    :: density_matrix
       LOGICAL, INTENT(IN)                                :: use_new_subsys_dm
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'build_pbpe_ref_sys_dm'
@@ -161,9 +162,9 @@ CONTAINS
          ! fm_tmp1_1 = ks_12 - fermi_energy * s_12
          CALL cp_fm_to_fm(opt_pbpe%ks_12, opt_pbpe%fm_tmp1_1)
          CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_1, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%s_12)
-         ! fm_tmp2_1 = fm_tmp1_1 * dm_2
+         ! fm_tmp2_1 = fm_tmp1_1 * dm_2_new
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), &
-                            1.0_dp, opt_pbpe%fm_tmp1_1, opt_pbpe%dm_2, 0.0_dp, opt_pbpe%fm_tmp2_1)
+                            1.0_dp, opt_pbpe%fm_tmp1_1, opt_pbpe%dm_2_new, 0.0_dp, opt_pbpe%fm_tmp2_1)
          ! fm_tmp3_1 = fm_tmp2_1 * s_21
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), &
                             1.0_dp, opt_pbpe%fm_tmp2_1, opt_pbpe%s_21, 0.0_dp, opt_pbpe%fm_tmp3_1)
@@ -177,9 +178,9 @@ CONTAINS
          ! fm_tmp1_2 = ks_21 - fermi_energy * s_21
          CALL cp_fm_to_fm(opt_pbpe%ks_21, opt_pbpe%fm_tmp1_2)
          CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_2, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%s_21)
-         ! fm_tmp2_2 = fm_tmp1_2 * dm_1
+         ! fm_tmp2_2 = fm_tmp1_2 * dm_1_new
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), &
-                            1.0_dp, opt_pbpe%fm_tmp1_2, opt_pbpe%dm_1, 0.0_dp, opt_pbpe%fm_tmp2_2)
+                            1.0_dp, opt_pbpe%fm_tmp1_2, opt_pbpe%dm_1_new, 0.0_dp, opt_pbpe%fm_tmp2_2)
          ! fm_tmp3_2 = fm_tmp2_2 * s_12
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
                             1.0_dp, opt_pbpe%fm_tmp2_2, opt_pbpe%s_12, 0.0_dp, opt_pbpe%fm_tmp3_2)
@@ -287,8 +288,6 @@ CONTAINS
       ! Check numbers of AOs in different subsystems
       IF (naos(1) + naos(2) .NE. naos(3)) THEN
          CPABORT("The sum of nAOs in two low-level subsystems does not equal to  in the total system.")
-      ELSE IF (naos(2) .NE. naos(4)) THEN
-         CPABORT("The low-level and high-level calculations should use the same basis set.")
       END IF
 
       DEALLOCATE (naos)
@@ -440,7 +439,6 @@ CONTAINS
       NULLIFY (opt_pbpe%dm_cluster_beta, opt_pbpe%dm_environment_beta)
       NULLIFY (opt_pbpe%dm_cluster_diff, opt_pbpe%dm_environment_diff)
       NULLIFY (opt_pbpe%dm_cluster_diff_beta, opt_pbpe%dm_environment_diff_beta)
-      NULLIFY (opt_pbpe%dm_cluster_canonical, opt_pbpe%dm_environment_canonical)
       NULLIFY (opt_pbpe%s_total, opt_pbpe%ks_total)
       NULLIFY (opt_pbpe%s_1, opt_pbpe%s_2)
       NULLIFY (opt_pbpe%ks_1, opt_pbpe%ks_2)
@@ -623,6 +621,7 @@ CONTAINS
       opt_pbpe%dm_environment => opt_pbpe%dm_1
       opt_pbpe%dm_cluster_diff => opt_pbpe%dm_2_diff
       opt_pbpe%dm_environment_diff => opt_pbpe%dm_1_diff
+      opt_pbpe%projection_environment => opt_pbpe%projection_1
       ! Beta spin counterparts
       IF (opt_pbpe%open_shell_embed) THEN
          opt_pbpe%dm_cluster_beta => opt_pbpe%dm_2_beta
@@ -652,6 +651,9 @@ CONTAINS
       CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=1, density_matrix=opt_pbpe%dm_1)
       CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=2, density_matrix=opt_pbpe%dm_2)
       CALL build_pbpe_ref_subsys_dm(opt_pbpe, density_matrix=opt_pbpe%dm_total, use_new_subsys_dm=.FALSE.)
+      CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=1, density_matrix=opt_pbpe%dm_1_new)
+      CALL build_pbpe_subsys_dm(opt_pbpe, subsys_num=2, density_matrix=opt_pbpe%dm_2_new)
+      CALL build_pbpe_ref_subsys_dm(opt_pbpe, density_matrix=opt_pbpe%dm_total_new, use_new_subsys_dm=.FALSE.)
 
       ! Initialize overlap matrices
       CALL get_qs_env(force_env%sub_force_env(3)%force_env%qs_env, matrix_s_kp=matrix_array_2d)
@@ -729,6 +731,21 @@ CONTAINS
 
 ! **************************************************************************************************
 !> \brief ...
+!> \param opt_pbpe ...
+! **************************************************************************************************
+   SUBROUTINE pbpe_mix_matrices(opt_pbpe)
+   TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
+
+   CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_mix_matrices'
+
+   CALL cp_fm_scale_and_add(0.4_dp, opt_pbpe%dm_1_new, 0.6_dp, opt_pbpe%dm_1)
+   CALL cp_fm_scale_and_add(0.4_dp, opt_pbpe%dm_2_new, 0.6_dp, opt_pbpe%dm_2)
+   CALL cp_fm_scale_and_add(0.4_dp, opt_pbpe%dm_total_new, 0.6_dp, opt_pbpe%dm_total)
+
+   END SUBROUTINE pbpe_mix_matrices
+
+! **************************************************************************************************
+!> \brief ...
 !> \param force_env ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
@@ -761,14 +778,6 @@ CONTAINS
       CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%NDIGITS", i_val=after)
       CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%OMIT_HEADERS", l_val=omit_headers)
       after = MIN(MAX(after, 1), 16)
-
-      IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
-                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY"), cp_p_file)) THEN
-         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY", extension=".Log")
-         CALL write_fm_with_basis_info(opt_pbpe%dm_total, 4, after, qs_env=qs_env_ref, &
-                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
-         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY")
-      END IF
 
       IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
                                            "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO"), cp_p_file)) THEN
@@ -882,8 +891,11 @@ CONTAINS
    
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_print_summary_info'
 
-      CALL qs_scf_print_summary(output_unit, force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env)
-      CALL qs_scf_print_summary(output_unit, force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env)
+      INTEGER                                            :: i_force_eval
+
+      DO i_force_eval = 1, opt_pbpe%ref_subsys_num
+         CALL qs_scf_print_summary(output_unit, force_env%sub_force_env(i_force_eval)%force_env%qs_env)
+      END DO
 
       IF ((opt_pbpe%converged) .AND. (output_unit .GT. 0)) THEN
          WRITE (UNIT=output_unit, FMT="(/,T2,A)") REPEAT("*", 79)
@@ -967,7 +979,7 @@ CONTAINS
       IF (opt_pbpe%fermi_energy .LT. 0) THEN
          opt_pbpe%fermi_energy = 0
       END IF
-
+      opt_pbpe%fermi_energy = 0.0_dp
       CALL timestop(handle)
 
    END SUBROUTINE prepare_pbpe_opt
@@ -1011,8 +1023,6 @@ CONTAINS
       NULLIFY (opt_pbpe%dm_environment)
       NULLIFY (opt_pbpe%dm_cluster_diff)
       NULLIFY (opt_pbpe%dm_environment_diff)
-      NULLIFY (opt_pbpe%dm_cluster_canonical)
-      NULLIFY (opt_pbpe%dm_environment_canonical)
 
       IF (opt_pbpe%open_shell_embed) THEN
          NULLIFY (opt_pbpe%dm_cluster_beta)
@@ -1291,21 +1301,71 @@ CONTAINS
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
-      TYPE(qs_environment_type), POINTER                 :: qs_env_cluster, qs_env_high_level
-      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: matrix_h_kp, matrix_ks_kp, &
-                                                            matrix_v_proj_emb_kp
+      TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
+      TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
+      TYPE(cp_fm_type), POINTER                          :: fm_ks_cluster, fm_v_proj_emb
+      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: matrix_ks_cluster, matrix_v_proj_emb
+      TYPE(qs_ks_env_type), POINTER                      :: ks_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
+      INTEGER                                            :: after, iw
+      LOGICAL                                            :: omit_headers
+      TYPE(cp_logger_type), POINTER                      :: logger
+      TYPE(section_vals_type), POINTER                   :: input
 
-      qs_env_cluster => force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env
-      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_2, qs_env_cluster)
-      CALL get_qs_env(qs_env_cluster, matrix_h_kp=matrix_h_kp, matrix_ks_kp=matrix_ks_kp)
+      NULLIFY (blacs_env)
+      NULLIFY (fm_struct)
+      NULLIFY (fm_ks_cluster, fm_v_proj_emb)
+      NULLIFY (matrix_ks_cluster, matrix_v_proj_emb)
+      NULLIFY (ks_env)
 
-      qs_env_high_level => force_env%sub_force_env(opt_pbpe%high_level_subsys_num)%force_env%qs_env
-      CALL get_qs_env(qs_env_high_level, matrix_v_proj_emb_kp=matrix_v_proj_emb_kp)
-      CALL dbcsr_allocate_matrix_set(matrix_v_proj_emb_kp, 1, 1)
-      CALL dbcsr_create(matrix_v_proj_emb_kp(1, 1)%matrix, name="PROJECTION AND EMBEDDING POTENTIAL", &
-                        template=matrix_h_kp(1, 1)%matrix)
-      
+      ! create matrices
+      CALL get_qs_env(force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env, para_env=para_env)
+      CALL cp_blacs_env_create(blacs_env=blacs_env, para_env=para_env)
+      CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
+                               nrow_global=opt_pbpe%naos_in_pbpe(opt_pbpe%cluster_subsys_num), &
+                               ncol_global=opt_pbpe%naos_in_pbpe(opt_pbpe%cluster_subsys_num))
+      ALLOCATE (fm_ks_cluster, fm_v_proj_emb)
+      CALL cp_fm_create(fm_ks_cluster, fm_struct, name="fm_ks_cluster")
+      CALL cp_fm_create(fm_v_proj_emb, fm_struct, name="fm_v_proj_emb")
+
+      CALL get_qs_env(force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, matrix_ks_kp=matrix_ks_cluster)
+      CALL copy_dbcsr_to_fm(matrix_ks_cluster(1, 1)%matrix, fm_ks_cluster)
+      CALL cp_fm_to_fm(opt_pbpe%ks_2_in_1, fm_v_proj_emb)
+      CALL cp_fm_scale_and_add(1.0_dp, fm_v_proj_emb, -1.0_dp, fm_ks_cluster)
+
+      CALL dbcsr_allocate_matrix_set(matrix_v_proj_emb, 1, 1)
+      ALLOCATE(matrix_v_proj_emb(1, 1)%matrix)
+      CALL dbcsr_create(matrix_v_proj_emb(1, 1)%matrix, name="PROJECTION AND EMBEDDING POTENTIAL", &
+                        template=matrix_ks_cluster(1, 1)%matrix)
+      CALL copy_fm_to_dbcsr(fm_v_proj_emb, matrix_v_proj_emb(1, 1)%matrix)
+
+      CALL get_qs_env(force_env%sub_force_env(opt_pbpe%high_level_subsys_num)%force_env%qs_env, ks_env=ks_env)
+      CPASSERT(ASSOCIATED(ks_env))
+      CALL set_ks_env(ks_env, matrix_v_proj_emb_kp=matrix_v_proj_emb)
+
+      ! print
+      logger => cp_get_default_logger()
+      CALL get_qs_env(qs_env=force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env, &
+                      input=input, para_env=para_env)
+      CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%NDIGITS", i_val=after)
+      CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%OMIT_HEADERS", l_val=omit_headers)
+      after = MIN(MAX(after, 1), 16)
+      iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY", extension=".Log")
+      CALL write_fm_with_basis_info(fm_v_proj_emb, 4, after, &
+                                    qs_env=force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, &
+                                    para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+      CALL write_fm_with_basis_info(opt_pbpe%projection_environment, 4, after, &
+                                    qs_env=force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, &
+                                    para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+
+      CALL cp_fm_release(fm_ks_cluster)
+      DEALLOCATE (fm_ks_cluster)
+      NULLIFY (fm_ks_cluster)
+
+      CALL cp_fm_release(fm_v_proj_emb)
+      DEALLOCATE (fm_v_proj_emb)
+      NULLIFY (fm_v_proj_emb)
 
    END SUBROUTINE set_proj_embed_pot_matrix_for_high_level
 

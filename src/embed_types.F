@@ -149,7 +149,6 @@ MODULE embed_types
                                                           dm_cluster_beta => NULL(), dm_environment_beta => NULL(), &
                                                           dm_cluster_diff => NULL(), dm_environment_diff => NULL(), &
                                                           dm_cluster_diff_beta => NULL(), dm_environment_diff_beta => NULL(), &
-                                                          dm_cluster_canonical => NULL(), dm_environment_canonical => NULL(), &
                                                           s_1 => NULL(), s_2 => NULL(), s_total => NULL(), &
                                                           ks_1 => NULL(), ks_2 => NULL(), ks_total => NULL(), &
                                                           ks_1_in_2 => NULL(), ks_2_in_1 => NULL(), &
