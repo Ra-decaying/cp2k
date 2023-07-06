@@ -33,7 +33,8 @@ MODULE optimize_pbpe_potential
                                               cp_print_key_finished_output,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE dbcsr_api,                       ONLY: dbcsr_create,&
+   USE dbcsr_api,                       ONLY: dbcsr_add,&
+                                              dbcsr_create,&
                                               dbcsr_p_type
    USE embed_types,                     ONLY: opt_pbpe_pot_type
    USE force_env_types,                 ONLY: force_env_type
@@ -72,7 +73,7 @@ MODULE optimize_pbpe_potential
              copy_ks_from_qs_to_pbpe, pbpe_check_scf_exit, pbpe_do_diagonalization, &
              pbpe_mix_matrices, pbpe_print_initialization_info, &
              pbpe_print_loop_info, pbpe_print_summary_info, prepare_pbpe_opt, &
-             release_pbpe_opt, set_proj_embed_pot_matrix_for_high_level, &
+             release_pbpe_opt, set_proj_embed_pot_matrix, &
              update_pbpe_density_and_ks_qs_env
 
 CONTAINS
@@ -502,7 +503,7 @@ CONTAINS
       CALL cp_fm_create(opt_pbpe%work1_1, fm_struct, name="work1_1")
       CALL cp_fm_create(opt_pbpe%work2_1, fm_struct, name="work2_1")
       CALL cp_fm_create(opt_pbpe%ortho_1, fm_struct, name="ORTHO OF SUBSYSTEM 1")
-      CALL cp_fm_create(opt_pbpe%projection_2, fm_struct, name="projection_2")
+      CALL cp_fm_create(opt_pbpe%projection_2, fm_struct, name="projection_1_in_2")
       CALL cp_fm_create(opt_pbpe%fm_tmp3_1, fm_struct, name="(ks12-e*s12)*d2*s21")
 
       CALL cp_fm_set_all(opt_pbpe%dm_1, 0.0_dp)
@@ -548,7 +549,7 @@ CONTAINS
       CALL cp_fm_create(opt_pbpe%work1_2, fm_struct, name="work1_2")
       CALL cp_fm_create(opt_pbpe%work2_2, fm_struct, name="work2_2")
       CALL cp_fm_create(opt_pbpe%ortho_2, fm_struct, name="ORTHO OF SUBSYSTEM 2")
-      CALL cp_fm_create(opt_pbpe%projection_1, fm_struct, name="projection_1")
+      CALL cp_fm_create(opt_pbpe%projection_1, fm_struct, name="projection_2_in_1")
       CALL cp_fm_create(opt_pbpe%fm_tmp3_2, fm_struct, name="(ks21-e*s21)*d1*s12")
 
       CALL cp_fm_set_all(opt_pbpe%dm_2, 0.0_dp)
@@ -864,6 +865,16 @@ CONTAINS
          CALL write_fm_with_basis_info(opt_pbpe%ks_total, 4, after, qs_env=qs_env_ref, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
          CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX")
+      END IF
+
+      IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION"), cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION", extension=".Log")
+         CALL write_fm_with_basis_info(opt_pbpe%projection_2, 4, after, qs_env=qs_env_1, &
+                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+         CALL write_fm_with_basis_info(opt_pbpe%projection_1, 4, after, qs_env=qs_env_2, &
+                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION")
       END IF
 
       IF (output_unit .GT. 0) THEN
@@ -1297,27 +1308,35 @@ CONTAINS
 !> \param force_env ...
 !> \param opt_pbpe ...
 ! **************************************************************************************************
-   SUBROUTINE set_proj_embed_pot_matrix_for_high_level(force_env, opt_pbpe)
+   SUBROUTINE set_proj_embed_pot_matrix(force_env, opt_pbpe)
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(opt_pbpe_pot_type)                            :: opt_pbpe
 
-      TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
-      TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_fm_type), POINTER                          :: fm_ks_cluster, fm_v_proj_emb
-      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: matrix_ks_cluster, matrix_v_proj_emb
-      TYPE(qs_ks_env_type), POINTER                      :: ks_env
-      TYPE(mp_para_env_type), POINTER                    :: para_env
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'set_proj_embed_pot_matrix'
 
       INTEGER                                            :: after, iw
       LOGICAL                                            :: omit_headers
+      TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
+      TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
+      TYPE(cp_fm_type), POINTER                          :: fm_ks, fm_v_proj_emb
       TYPE(cp_logger_type), POINTER                      :: logger
+      TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: matrix_h, matrix_ks, &
+                                                            matrix_v_proj_emb_cluster, &
+                                                            matrix_v_proj_emb_high_level
+      TYPE(qs_ks_env_type), POINTER                      :: ks_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), POINTER                   :: input
 
       NULLIFY (blacs_env)
       NULLIFY (fm_struct)
-      NULLIFY (fm_ks_cluster, fm_v_proj_emb)
-      NULLIFY (matrix_ks_cluster, matrix_v_proj_emb)
+      NULLIFY (fm_ks, fm_v_proj_emb)
+      NULLIFY (matrix_h, matrix_ks)
+      NULLIFY (matrix_v_proj_emb_cluster, matrix_v_proj_emb_high_level)
       NULLIFY (ks_env)
+
+      logger => cp_get_default_logger()
+
+      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_2_new, force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env)
 
       ! create matrices
       CALL get_qs_env(force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env, para_env=para_env)
@@ -1325,49 +1344,60 @@ CONTAINS
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(opt_pbpe%cluster_subsys_num), &
                                ncol_global=opt_pbpe%naos_in_pbpe(opt_pbpe%cluster_subsys_num))
-      ALLOCATE (fm_ks_cluster, fm_v_proj_emb)
-      CALL cp_fm_create(fm_ks_cluster, fm_struct, name="fm_ks_cluster")
+      ALLOCATE (fm_ks, fm_v_proj_emb)
+      CALL cp_fm_create(fm_ks, fm_struct, name="fm_ks")
       CALL cp_fm_create(fm_v_proj_emb, fm_struct, name="fm_v_proj_emb")
 
-      CALL get_qs_env(force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, matrix_ks_kp=matrix_ks_cluster)
-      CALL copy_dbcsr_to_fm(matrix_ks_cluster(1, 1)%matrix, fm_ks_cluster)
+      CALL get_qs_env(force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, matrix_ks_kp=matrix_ks)
+      CALL copy_dbcsr_to_fm(matrix_ks(1, 1)%matrix, fm_ks)
       CALL cp_fm_to_fm(opt_pbpe%ks_2_in_1, fm_v_proj_emb)
-      CALL cp_fm_scale_and_add(1.0_dp, fm_v_proj_emb, -1.0_dp, fm_ks_cluster)
+      CALL cp_fm_scale_and_add(1.0_dp, fm_v_proj_emb, -1.0_dp, fm_ks)
 
-      CALL dbcsr_allocate_matrix_set(matrix_v_proj_emb, 1, 1)
-      ALLOCATE(matrix_v_proj_emb(1, 1)%matrix)
-      CALL dbcsr_create(matrix_v_proj_emb(1, 1)%matrix, name="PROJECTION AND EMBEDDING POTENTIAL", &
-                        template=matrix_ks_cluster(1, 1)%matrix)
-      CALL copy_fm_to_dbcsr(fm_v_proj_emb, matrix_v_proj_emb(1, 1)%matrix)
+      CALL dbcsr_allocate_matrix_set(matrix_v_proj_emb_cluster, 1, 1)
+      ALLOCATE(matrix_v_proj_emb_cluster(1, 1)%matrix)
+      CALL dbcsr_create(matrix_v_proj_emb_cluster(1, 1)%matrix, name="PROJECTION_AND_EMBEDDING_POTENTIAL", &
+                        template=matrix_ks(1, 1)%matrix)
+      CALL copy_fm_to_dbcsr(fm_v_proj_emb, matrix_v_proj_emb_cluster(1, 1)%matrix)
+
+      CALL get_qs_env(force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, &
+                      matrix_h_kp=matrix_h, ks_env=ks_env)
+      CPASSERT(ASSOCIATED(ks_env))
+      CALL set_ks_env(ks_env, matrix_v_proj_emb_kp=matrix_v_proj_emb_cluster)
+      CALL dbcsr_add(matrix_h(1, 1)%matrix, matrix_v_proj_emb_cluster(1, 1)%matrix, 1.0_dp, 1.0_dp)
+
+      CALL dbcsr_allocate_matrix_set(matrix_v_proj_emb_high_level, 1, 1)
+      ALLOCATE(matrix_v_proj_emb_high_level(1, 1)%matrix)
+      CALL dbcsr_create(matrix_v_proj_emb_high_level(1, 1)%matrix, name="PROJECTION_AND_EMBEDDING_POTENTIAL", &
+                        template=matrix_ks(1, 1)%matrix)
+      CALL copy_fm_to_dbcsr(fm_v_proj_emb, matrix_v_proj_emb_high_level(1, 1)%matrix)
 
       CALL get_qs_env(force_env%sub_force_env(opt_pbpe%high_level_subsys_num)%force_env%qs_env, ks_env=ks_env)
       CPASSERT(ASSOCIATED(ks_env))
-      CALL set_ks_env(ks_env, matrix_v_proj_emb_kp=matrix_v_proj_emb)
+      CALL set_ks_env(ks_env, matrix_v_proj_emb_kp=matrix_v_proj_emb_high_level)
 
-      ! print
-      logger => cp_get_default_logger()
-      CALL get_qs_env(qs_env=force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env, &
-                      input=input, para_env=para_env)
+      CALL get_qs_env(qs_env=force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, input=input, para_env=para_env)
+
       CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%NDIGITS", i_val=after)
       CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%OMIT_HEADERS", l_val=omit_headers)
       after = MIN(MAX(after, 1), 16)
-      iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY", extension=".Log")
-      CALL write_fm_with_basis_info(fm_v_proj_emb, 4, after, &
-                                    qs_env=force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, &
-                                    para_env=para_env, output_unit=iw, omit_headers=omit_headers)
-      CALL write_fm_with_basis_info(opt_pbpe%projection_environment, 4, after, &
-                                    qs_env=force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, &
-                                    para_env=para_env, output_unit=iw, omit_headers=omit_headers)
 
-      CALL cp_fm_release(fm_ks_cluster)
-      DEALLOCATE (fm_ks_cluster)
-      NULLIFY (fm_ks_cluster)
+      IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION_AND_EMBEDDING_POTENTIAL"), cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION_AND_EMBEDDING_POTENTIAL", extension=".Log")
+         CALL write_fm_with_basis_info(fm_v_proj_emb, 4, after, qs_env=force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, &
+                                       para_env=para_env, output_unit=iw, omit_headers=omit_headers)
+         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION_AND_EMBEDDING_POTENTIAL")
+      END IF
+
+      CALL cp_fm_release(fm_ks)
+      DEALLOCATE (fm_ks)
+      NULLIFY (fm_ks)
 
       CALL cp_fm_release(fm_v_proj_emb)
       DEALLOCATE (fm_v_proj_emb)
       NULLIFY (fm_v_proj_emb)
 
-   END SUBROUTINE set_proj_embed_pot_matrix_for_high_level
+   END SUBROUTINE set_proj_embed_pot_matrix
 
 ! **************************************************************************************************
 !> \brief ...

@@ -137,7 +137,7 @@ MODULE force_env_methods
                                               pbpe_print_summary_info,&
                                               prepare_pbpe_opt,&
                                               release_pbpe_opt,&
-                                              set_proj_embed_pot_matrix_for_high_level,&
+                                              set_proj_embed_pot_matrix,&
                                               update_pbpe_density_and_ks_qs_env
    USE particle_list_types,             ONLY: particle_list_p_type,&
                                               particle_list_type
@@ -2266,11 +2266,11 @@ CONTAINS
          CPABORT("Low-level PBPE embedding not converged")
       END IF
 
-      CALL set_proj_embed_pot_matrix_for_high_level(force_env, opt_pbpe)
+      CALL set_proj_embed_pot_matrix(force_env, opt_pbpe)
 
-      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_1, force_env%sub_force_env(1)%force_env%qs_env)
-      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_2, force_env%sub_force_env(2)%force_env%qs_env)
-      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_total, force_env%sub_force_env(3)%force_env%qs_env)
+      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_1_new, force_env%sub_force_env(1)%force_env%qs_env)
+      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_2_new, force_env%sub_force_env(2)%force_env%qs_env)
+      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_total_new, force_env%sub_force_env(3)%force_env%qs_env)
 
       CALL pbpe_print_summary_info(force_env, opt_pbpe, output_unit)
 
