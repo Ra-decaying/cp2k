@@ -144,11 +144,6 @@ MODULE embed_types
                                                           dm_1_beta_new => NULL(), dm_2_beta_new => NULL(), dm_total_beta_new => NULL(), &
                                                           dm_1_diff => NULL(), dm_2_diff => NULL(), dm_total_diff => NULL(), &
                                                           dm_1_diff_beta => NULL(), dm_2_diff_beta => NULL(), dm_total_diff_beta => NULL(), &
-                                                          dm_1_canonical => NULL(), dm_2_canonical => NULL(), dm_total_canonical => NULL(), &
-                                                          dm_cluster => NULL(), dm_environment => NULL(), &
-                                                          dm_cluster_beta => NULL(), dm_environment_beta => NULL(), &
-                                                          dm_cluster_diff => NULL(), dm_environment_diff => NULL(), &
-                                                          dm_cluster_diff_beta => NULL(), dm_environment_diff_beta => NULL(), &
                                                           s_1 => NULL(), s_2 => NULL(), s_total => NULL(), &
                                                           ks_1 => NULL(), ks_2 => NULL(), ks_total => NULL(), &
                                                           ks_1_in_2 => NULL(), ks_2_in_1 => NULL(), &

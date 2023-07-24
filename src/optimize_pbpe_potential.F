@@ -424,11 +424,6 @@ CONTAINS
       NULLIFY (opt_pbpe%dm_1_beta_new, opt_pbpe%dm_2_beta_new, opt_pbpe%dm_total_beta_new)
       NULLIFY (opt_pbpe%dm_1_diff, opt_pbpe%dm_2_diff, opt_pbpe%dm_total_diff)
       NULLIFY (opt_pbpe%dm_1_diff_beta, opt_pbpe%dm_2_diff_beta, opt_pbpe%dm_total_diff_beta)
-      NULLIFY (opt_pbpe%dm_1_canonical, opt_pbpe%dm_2_canonical, opt_pbpe%dm_total_canonical)
-      NULLIFY (opt_pbpe%dm_cluster, opt_pbpe%dm_environment)
-      NULLIFY (opt_pbpe%dm_cluster_beta, opt_pbpe%dm_environment_beta)
-      NULLIFY (opt_pbpe%dm_cluster_diff, opt_pbpe%dm_environment_diff)
-      NULLIFY (opt_pbpe%dm_cluster_diff_beta, opt_pbpe%dm_environment_diff_beta)
       NULLIFY (opt_pbpe%s_total, opt_pbpe%ks_total)
       NULLIFY (opt_pbpe%s_1, opt_pbpe%s_2)
       NULLIFY (opt_pbpe%ks_1, opt_pbpe%ks_2)
@@ -445,19 +440,17 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(3), ncol_global=opt_pbpe%naos_in_pbpe(3))
-      ALLOCATE (opt_pbpe%dm_total, opt_pbpe%dm_total_new, opt_pbpe%dm_total_diff, opt_pbpe%dm_total_canonical, &
+      ALLOCATE (opt_pbpe%dm_total, opt_pbpe%dm_total_new, opt_pbpe%dm_total_diff, &
                 opt_pbpe%s_total, opt_pbpe%ks_total)
       CALL cp_fm_create(opt_pbpe%dm_total, fm_struct, name="dm_total")
       CALL cp_fm_create(opt_pbpe%dm_total_new, fm_struct, name="dm_total_new")
       CALL cp_fm_create(opt_pbpe%dm_total_diff, fm_struct, name="dm_total_diff")
-      CALL cp_fm_create(opt_pbpe%dm_total_canonical, fm_struct, name="dm_total_canonical")
       CALL cp_fm_create(opt_pbpe%s_total, fm_struct, name="s_total")
       CALL cp_fm_create(opt_pbpe%ks_total, fm_struct, name="KOHN-SHAM MATRIX")
 
       CALL cp_fm_set_all(opt_pbpe%dm_total, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_total_new, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%dm_total_diff, 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%dm_total_canonical, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%s_total, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ks_total, 0.0_dp)
 
@@ -479,13 +472,12 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%naos_in_pbpe(1))
-      ALLOCATE (opt_pbpe%dm_1, opt_pbpe%dm_1_new, opt_pbpe%dm_1_diff, opt_pbpe%dm_1_canonical, &
-                opt_pbpe%s_1, opt_pbpe%ks_1, opt_pbpe%ks_1_in_2, opt_pbpe%work1_1, opt_pbpe%work2_1, &
+      ALLOCATE (opt_pbpe%dm_1, opt_pbpe%dm_1_new, opt_pbpe%dm_1_diff, opt_pbpe%s_1, &
+                opt_pbpe%ks_1, opt_pbpe%ks_1_in_2, opt_pbpe%work1_1, opt_pbpe%work2_1, &
                 opt_pbpe%ortho_1, opt_pbpe%projection_2, opt_pbpe%fm_tmp3_1)
       CALL cp_fm_create(opt_pbpe%dm_1, fm_struct, name="DENSITY MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%dm_1_new, fm_struct, name="dm_1_new")
       CALL cp_fm_create(opt_pbpe%dm_1_diff, fm_struct, name="dm_1_diff")
-      CALL cp_fm_create(opt_pbpe%dm_1_canonical, fm_struct, name="dm_1_canonical")
       CALL cp_fm_create(opt_pbpe%s_1, fm_struct, name="OVERLAP MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%ks_1, fm_struct, name="KOHN-SHAM MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%ks_1_in_2, fm_struct, name="EMBEDDED KOHN-SHAM MATRIX OF SUBSYSTEM 1")
@@ -525,13 +517,12 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%naos_in_pbpe(2))
-      ALLOCATE (opt_pbpe%dm_2, opt_pbpe%dm_2_new, opt_pbpe%dm_2_diff, opt_pbpe%dm_2_canonical, &
-                opt_pbpe%s_2, opt_pbpe%ks_2, opt_pbpe%ks_2_in_1, opt_pbpe%work1_2, opt_pbpe%work2_2, &
+      ALLOCATE (opt_pbpe%dm_2, opt_pbpe%dm_2_new, opt_pbpe%dm_2_diff, opt_pbpe%s_2, &
+                opt_pbpe%ks_2, opt_pbpe%ks_2_in_1, opt_pbpe%work1_2, opt_pbpe%work2_2, &
                 opt_pbpe%ortho_2, opt_pbpe%projection_1, opt_pbpe%fm_tmp3_2)
       CALL cp_fm_create(opt_pbpe%dm_2, fm_struct, name="DENSITY MATRIX OF SUBSYSTEM 2")
       CALL cp_fm_create(opt_pbpe%dm_2_new, fm_struct, name="dm_2_new")
       CALL cp_fm_create(opt_pbpe%dm_2_diff, fm_struct, name="dm_2_diff")
-      CALL cp_fm_create(opt_pbpe%dm_2_canonical, fm_struct, name="dm_2_canonical")
       CALL cp_fm_create(opt_pbpe%s_2, fm_struct, name="OVERLAP MATRIX OF SUBSYSTEM 2")
       CALL cp_fm_create(opt_pbpe%ks_2, fm_struct, name="KOHN-SHAM MATRIX OF SUBSYSTEM 2")
       CALL cp_fm_create(opt_pbpe%ks_2_in_1, fm_struct, name="EMBEDDED KOHN-SHAM MATRIX OF SUBSYSTEM 2")
@@ -605,20 +596,6 @@ CONTAINS
 
       ! Release context
       CALL cp_blacs_env_release(blacs_env)
-
-      ! Associate matrix pointers
-      opt_pbpe%dm_cluster => opt_pbpe%dm_2
-      opt_pbpe%dm_environment => opt_pbpe%dm_1
-      opt_pbpe%dm_cluster_diff => opt_pbpe%dm_2_diff
-      opt_pbpe%dm_environment_diff => opt_pbpe%dm_1_diff
-      opt_pbpe%projection_environment => opt_pbpe%projection_1
-      ! Beta spin counterparts
-      IF (opt_pbpe%open_shell_embed) THEN
-         opt_pbpe%dm_cluster_beta => opt_pbpe%dm_2_beta
-         opt_pbpe%dm_environment_beta => opt_pbpe%dm_1_beta
-         opt_pbpe%dm_cluster_diff_beta => opt_pbpe%dm_2_diff_beta
-         opt_pbpe%dm_environment_diff_beta => opt_pbpe%dm_1_diff_beta
-      END IF
 
    END SUBROUTINE create_pbpe_matrices
 
@@ -1019,18 +996,6 @@ CONTAINS
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'release_pbpe_matrices'
 
-      NULLIFY (opt_pbpe%dm_cluster)
-      NULLIFY (opt_pbpe%dm_environment)
-      NULLIFY (opt_pbpe%dm_cluster_diff)
-      NULLIFY (opt_pbpe%dm_environment_diff)
-
-      IF (opt_pbpe%open_shell_embed) THEN
-         NULLIFY (opt_pbpe%dm_cluster_beta)
-         NULLIFY (opt_pbpe%dm_environment_beta)
-         NULLIFY (opt_pbpe%dm_cluster_diff_beta)
-         NULLIFY (opt_pbpe%dm_environment_diff_beta)
-      END IF
-
       IF (ASSOCIATED(opt_pbpe%dm_total)) THEN
          CALL cp_fm_release(opt_pbpe%dm_total)
          DEALLOCATE (opt_pbpe%dm_total)
@@ -1074,11 +1039,6 @@ CONTAINS
          CALL cp_fm_release(opt_pbpe%dm_1_diff)
          DEALLOCATE (opt_pbpe%dm_1_diff)
          NULLIFY (opt_pbpe%dm_1_diff)
-      END IF
-      IF (ASSOCIATED(opt_pbpe%dm_1_canonical)) THEN
-         CALL cp_fm_release(opt_pbpe%dm_1_canonical)
-         DEALLOCATE (opt_pbpe%dm_1_canonical)
-         NULLIFY (opt_pbpe%dm_1_canonical)
       END IF
       IF (ASSOCIATED(opt_pbpe%s_1)) THEN
          CALL cp_fm_release(opt_pbpe%s_1)
@@ -1138,11 +1098,6 @@ CONTAINS
          CALL cp_fm_release(opt_pbpe%dm_2_diff)
          DEALLOCATE (opt_pbpe%dm_2_diff)
          NULLIFY (opt_pbpe%dm_2_diff)
-      END IF
-      IF (ASSOCIATED(opt_pbpe%dm_2_canonical)) THEN
-         CALL cp_fm_release(opt_pbpe%dm_2_canonical)
-         DEALLOCATE (opt_pbpe%dm_2_canonical)
-         NULLIFY (opt_pbpe%dm_2_canonical)
       END IF
       IF (ASSOCIATED(opt_pbpe%s_2)) THEN
          CALL cp_fm_release(opt_pbpe%s_2)
