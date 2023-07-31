@@ -127,16 +127,17 @@ MODULE embed_types
 ! **************************************************************************************************
 
    TYPE opt_pbpe_pot_type
-      INTEGER                                          :: i_iter, n_iter, &
-                                                          cluster_subsys_num, environment_subsys_num, &
-                                                          high_level_subsys_num, ref_subsys_num
+      INTEGER                                          :: i_iter = -1, n_iter = -1, &
+                                                          cluster_subsys_num = -1, environment_subsys_num = -1, &
+                                                          high_level_subsys_num = -1, ref_subsys_num = -1
       INTEGER, ALLOCATABLE, DIMENSION(:)               :: all_nspins, naos, naos_in_pbpe, nmos
-      LOGICAL                                          :: abs_localization, change_spin, converged, &
-                                                          do_kpoints, open_shell_embed, should_exit_scf_loop
-      REAL(KIND=dp)                                    :: conv_max, conv_rmse, &
-                                                          homo_energy_1, homo_energy_2, fermi_energy, &
-                                                          max_in_dm_1_diff, max_in_dm_2_diff, max_in_dm_total_diff, &
-                                                          norm_dm_1_diff, norm_dm_2_diff, norm_dm_total_diff
+      LOGICAL                                          :: abs_localization = .TRUE., change_spin = .FALSE., &
+                                                          converged = .FALSE., do_kpoints = .FALSE., &
+                                                          open_shell_embed = .FALSE., should_exit_scf_loop = .FALSE.
+      REAL(KIND=dp)                                    :: conv_max = 0.0_dp, conv_rmse = 0.0_dp, &
+                                                          homo_energy_1 = 0.0_dp, homo_energy_2 = 0.0_dp, fermi_energy = 0.0_dp, &
+                                                          max_in_dm_1_diff = 0.0_dp, max_in_dm_2_diff = 0.0_dp, max_in_dm_total_diff = 0.0_dp, &
+                                                          norm_dm_1_diff = 0.0_dp, norm_dm_2_diff = 0.0_dp, norm_dm_total_diff = 0.0_dp
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)         :: max_diff
       TYPE(cp_fm_type), POINTER                        :: dm_1 => NULL(), dm_2 => NULL(), dm_total => NULL(), &
                                                           dm_1_new => NULL(), dm_2_new => NULL(), dm_total_new => NULL(), &
