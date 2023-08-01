@@ -157,7 +157,7 @@ MODULE embed_types
                                                           projection_environment => NULL(), &
                                                           fm_tmp1_1 => NULL(), fm_tmp2_1 => NULL(), fm_tmp3_1 => NULL(), &
                                                           fm_tmp1_2 => NULL(), fm_tmp2_2 => NULL(), fm_tmp3_2 => NULL()
-      TYPE(mo_set_type), DIMENSION(:, :), POINTER      :: mos_subsys_kp => NULL()
+      TYPE(mo_set_type), DIMENSION(:, :), POINTER      :: mos_kp_subsys => NULL()
    END TYPE opt_pbpe_pot_type
 
 ! **************************************************************************************************

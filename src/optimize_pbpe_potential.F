@@ -99,7 +99,7 @@ CONTAINS
 
       coeff = 2.0_dp
 
-      CALL get_mo_set(mo_set=opt_pbpe%mos_subsys_kp(subsys_num, 1), mo_coeff=mo_coeff, nao=nao, homo=homo)
+      CALL get_mo_set(mo_set=opt_pbpe%mos_kp_subsys(1, subsys_num), mo_coeff=mo_coeff, nao=nao, homo=homo)
       CALL parallel_gemm(transa="N", transb="T", m=nao, n=nao, k=homo, &
                          alpha=coeff, matrix_a=mo_coeff, matrix_b=mo_coeff, &
                          beta=0.0_dp, matrix_c=density_matrix)
@@ -344,18 +344,18 @@ CONTAINS
       NULLIFY (blacs_env)
       CALL cp_blacs_env_create(blacs_env=blacs_env, para_env=para_env)
 
-      NULLIFY (opt_pbpe%mos_subsys_kp)
+      NULLIFY (opt_pbpe%mos_kp_subsys)
 
-      ALLOCATE (opt_pbpe%mos_subsys_kp(2, 1))
+      ALLOCATE (opt_pbpe%mos_kp_subsys(1, 2))
 
       NULLIFY (mo_coeff_1, mo_coeff_2)
       NULLIFY (fm_struct)
 
-      ! Initialize mos_subsys_kp(1, 1)
+      ! Initialize mos_kp_subsys(1, 1)
       CALL get_qs_env(qs_env=force_env%sub_force_env(1)%force_env%qs_env, mos=mos)
-      CALL duplicate_mo_set(opt_pbpe%mos_subsys_kp(1, 1), mos(1))
-      ! Copy mos_subsys_kp(1, 1)%mo_coeff to mo_coeff_1
-      CALL get_mo_set(opt_pbpe%mos_subsys_kp(1, 1), mo_coeff=mo_coeff)
+      CALL duplicate_mo_set(opt_pbpe%mos_kp_subsys(1, 1), mos(1))
+      ! Copy mos_kp_subsys(1, 1)%mo_coeff to mo_coeff_1
+      CALL get_mo_set(opt_pbpe%mos_kp_subsys(1, 1), mo_coeff=mo_coeff)
       ALLOCATE (mo_coeff_1)
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%nmos(1))
@@ -363,20 +363,20 @@ CONTAINS
       CALL cp_fm_set_all(mo_coeff_1, 0.0_dp)
       CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_1, opt_pbpe%naos(1), opt_pbpe%nmos(1), &
                               1, 1, 1, 1)
-      ! Replace mos_subsys_kp(1, 1)%mo_coeff with mo_coeff_1
-      CALL set_mo_set(opt_pbpe%mos_subsys_kp(1, 1), nao=opt_pbpe%naos_in_pbpe(1))
-      CALL cp_fm_release(opt_pbpe%mos_subsys_kp(1, 1)%mo_coeff)
-      DEALLOCATE (opt_pbpe%mos_subsys_kp(1, 1)%mo_coeff)
-      opt_pbpe%mos_subsys_kp(1, 1)%mo_coeff => mo_coeff_1
+      ! Replace mos_kp_subsys(1, 1)%mo_coeff with mo_coeff_1
+      CALL set_mo_set(opt_pbpe%mos_kp_subsys(1, 1), nao=opt_pbpe%naos_in_pbpe(1))
+      CALL cp_fm_release(opt_pbpe%mos_kp_subsys(1, 1)%mo_coeff)
+      DEALLOCATE (opt_pbpe%mos_kp_subsys(1, 1)%mo_coeff)
+      opt_pbpe%mos_kp_subsys(1, 1)%mo_coeff => mo_coeff_1
 
       CALL cp_fm_struct_release(fm_struct)
       NULLIFY (fm_struct)
 
-      ! Initialize mos_subsys_kp(2, 1)
+      ! Initialize mos_kp_subsys(1, 2)
       CALL get_qs_env(qs_env=force_env%sub_force_env(2)%force_env%qs_env, mos=mos)
-      CALL duplicate_mo_set(opt_pbpe%mos_subsys_kp(2, 1), mos(1))
+      CALL duplicate_mo_set(opt_pbpe%mos_kp_subsys(1, 2), mos(1))
       ! Copy mos%mo_coeff to mo_coeff_2
-      CALL get_mo_set(opt_pbpe%mos_subsys_kp(2, 1), mo_coeff=mo_coeff)
+      CALL get_mo_set(opt_pbpe%mos_kp_subsys(1, 2), mo_coeff=mo_coeff)
       ALLOCATE (mo_coeff_2)
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%nmos(2))
@@ -384,11 +384,11 @@ CONTAINS
       CALL cp_fm_set_all(mo_coeff_2, 0.0_dp)
       CALL cp_fm_to_fm_submat(mo_coeff, mo_coeff_2, opt_pbpe%naos(2), opt_pbpe%nmos(2), &
                               1, 1, opt_pbpe%naos_in_pbpe(2) - opt_pbpe%naos(2) + 1, 1)
-      ! Replace mos_subsys_kp(2, 1)%mo_coeff with mo_coeff_2
-      CALL set_mo_set(opt_pbpe%mos_subsys_kp(2, 1), nao=opt_pbpe%naos_in_pbpe(2))
-      CALL cp_fm_release(opt_pbpe%mos_subsys_kp(2, 1)%mo_coeff)
-      DEALLOCATE (opt_pbpe%mos_subsys_kp(2, 1)%mo_coeff)
-      opt_pbpe%mos_subsys_kp(2, 1)%mo_coeff => mo_coeff_2
+      ! Replace mos_kp_subsys(1, 2)%mo_coeff with mo_coeff_2
+      CALL set_mo_set(opt_pbpe%mos_kp_subsys(1, 2), nao=opt_pbpe%naos_in_pbpe(2))
+      CALL cp_fm_release(opt_pbpe%mos_kp_subsys(1, 2)%mo_coeff)
+      DEALLOCATE (opt_pbpe%mos_kp_subsys(1, 2)%mo_coeff)
+      opt_pbpe%mos_kp_subsys(1, 2)%mo_coeff => mo_coeff_2
 
       CALL cp_fm_struct_release(fm_struct)
       NULLIFY (fm_struct)
@@ -682,13 +682,13 @@ CONTAINS
       CPASSERT((subsys_num .EQ. 1) .OR. (subsys_num .EQ. 2))
       IF (subsys_num .EQ. 1) THEN
          CALL cp_fm_to_fm(opt_pbpe%ks_1_in_2, opt_pbpe%work1_1)
-         CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_1, mo_set=opt_pbpe%mos_subsys_kp(1, 1), &
+         CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_1, mo_set=opt_pbpe%mos_kp_subsys(1, 1), &
                                ortho=opt_pbpe%ortho_1, work=opt_pbpe%work2_1, &
                                do_level_shift=.FALSE., level_shift=0.0_dp, &
                                use_jacobi=.FALSE., jacobi_threshold=0.0_dp)
       ELSE IF (subsys_num .EQ. 2) THEN
          CALL cp_fm_to_fm(opt_pbpe%ks_2_in_1, opt_pbpe%work1_2)
-         CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_2, mo_set=opt_pbpe%mos_subsys_kp(2, 1), &
+         CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_2, mo_set=opt_pbpe%mos_kp_subsys(1, 2), &
                                ortho=opt_pbpe%ortho_2, work=opt_pbpe%work2_2, &
                                do_level_shift=.FALSE., level_shift=0.0_dp, &
                                use_jacobi=.FALSE., jacobi_threshold=0.0_dp)
@@ -946,8 +946,8 @@ CONTAINS
       CALL init_pbpe_matrices(force_env, opt_pbpe)
 
       ! Get Fermi energy
-      CALL get_mo_set(opt_pbpe%mos_subsys_kp(1, 1), mu=opt_pbpe%homo_energy_1)
-      CALL get_mo_set(opt_pbpe%mos_subsys_kp(2, 1), mu=opt_pbpe%homo_energy_2)
+      CALL get_mo_set(opt_pbpe%mos_kp_subsys(1, 1), mu=opt_pbpe%homo_energy_1)
+      CALL get_mo_set(opt_pbpe%mos_kp_subsys(1, 2), mu=opt_pbpe%homo_energy_2)
       IF (opt_pbpe%homo_energy_1 .GT. opt_pbpe%homo_energy_2) THEN
          opt_pbpe%fermi_energy = opt_pbpe%homo_energy_1
       ELSE
@@ -1212,13 +1212,13 @@ CONTAINS
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'release_pbpe_mo_sets'
 
-      IF (ASSOCIATED(opt_pbpe%mos_subsys_kp)) THEN
-         CALL deallocate_mo_set(opt_pbpe%mos_subsys_kp(1, 1))
-         CALL deallocate_mo_set(opt_pbpe%mos_subsys_kp(2, 1))
+      IF (ASSOCIATED(opt_pbpe%mos_kp_subsys)) THEN
+         CALL deallocate_mo_set(opt_pbpe%mos_kp_subsys(1, 1))
+         CALL deallocate_mo_set(opt_pbpe%mos_kp_subsys(1, 2))
       END IF
 
-      DEALLOCATE (opt_pbpe%mos_subsys_kp)
-      NULLIFY (opt_pbpe%mos_subsys_kp)
+      DEALLOCATE (opt_pbpe%mos_kp_subsys)
+      NULLIFY (opt_pbpe%mos_kp_subsys)
 
    END SUBROUTINE release_pbpe_mo_sets
 
