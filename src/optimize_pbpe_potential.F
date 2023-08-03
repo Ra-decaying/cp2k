@@ -156,13 +156,13 @@ CONTAINS
       IF (subsys_num .EQ. 1) THEN
          ! fm_tmp1_1 = ks_12 - fermi_energy * s_12
          CALL cp_fm_to_fm(opt_pbpe%ks_12, opt_pbpe%fm_tmp1_1)
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_1, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%s_12)
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_1, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%matrix_s_kp_block(1, 1, 2))
          ! fm_tmp2_1 = fm_tmp1_1 * dm_2_new
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), &
                             1.0_dp, opt_pbpe%fm_tmp1_1, opt_pbpe%dm_2_new, 0.0_dp, opt_pbpe%fm_tmp2_1)
          ! fm_tmp3_1 = fm_tmp2_1 * s_21
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), &
-                            1.0_dp, opt_pbpe%fm_tmp2_1, opt_pbpe%s_21, 0.0_dp, opt_pbpe%fm_tmp3_1)
+                            1.0_dp, opt_pbpe%fm_tmp2_1, opt_pbpe%matrix_s_kp_block(1, 2, 1), 0.0_dp, opt_pbpe%fm_tmp3_1)
          ! projection_2 = -0.5 * fm_tmp3_1 * (fm_tmp3_1 ^ T)
          CALL cp_fm_to_fm(opt_pbpe%fm_tmp3_1, opt_pbpe%projection_2)
          CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp3_1, -0.5_dp, opt_pbpe%projection_2)
@@ -172,13 +172,13 @@ CONTAINS
       ELSE IF (subsys_num .EQ. 2) THEN
          ! fm_tmp1_2 = ks_21 - fermi_energy * s_21
          CALL cp_fm_to_fm(opt_pbpe%ks_21, opt_pbpe%fm_tmp1_2)
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_2, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%s_21)
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_2, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%matrix_s_kp_block(1, 2, 1))
          ! fm_tmp2_2 = fm_tmp1_2 * dm_1_new
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), &
                             1.0_dp, opt_pbpe%fm_tmp1_2, opt_pbpe%dm_1_new, 0.0_dp, opt_pbpe%fm_tmp2_2)
          ! fm_tmp3_2 = fm_tmp2_2 * s_12
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
-                            1.0_dp, opt_pbpe%fm_tmp2_2, opt_pbpe%s_12, 0.0_dp, opt_pbpe%fm_tmp3_2)
+                            1.0_dp, opt_pbpe%fm_tmp2_2, opt_pbpe%matrix_s_kp_block(1, 1, 2), 0.0_dp, opt_pbpe%fm_tmp3_2)
          ! projection_1 = -0.5 * fm_tmp3_2 * (fm_tmp3_2 ^ T)
          CALL cp_fm_to_fm(opt_pbpe%fm_tmp3_2, opt_pbpe%projection_1)
          CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp3_2, -0.5_dp, opt_pbpe%projection_1)
@@ -433,7 +433,6 @@ CONTAINS
       NULLIFY (opt_pbpe%ks_total)
       NULLIFY (opt_pbpe%ks_1, opt_pbpe%ks_2)
       NULLIFY (opt_pbpe%ks_1_in_2, opt_pbpe%ks_2_in_1)
-      NULLIFY (opt_pbpe%s_12, opt_pbpe%s_21)
       NULLIFY (opt_pbpe%ks_12, opt_pbpe%ks_21)
       NULLIFY (opt_pbpe%work1_1, opt_pbpe%work1_2)
       NULLIFY (opt_pbpe%work2_1, opt_pbpe%work2_2)
@@ -566,13 +565,13 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%naos_in_pbpe(2))
-      ALLOCATE (opt_pbpe%s_12, opt_pbpe%ks_12, opt_pbpe%fm_tmp1_1, opt_pbpe%fm_tmp2_1)
-      CALL cp_fm_create(opt_pbpe%s_12, fm_struct, name="s_12")
+      ALLOCATE (opt_pbpe%ks_12, opt_pbpe%fm_tmp1_1, opt_pbpe%fm_tmp2_1)
+      CALL cp_fm_create(opt_pbpe%matrix_s_kp_block(1, 1, 2), fm_struct, name="s_12")
       CALL cp_fm_create(opt_pbpe%ks_12, fm_struct, name="ks_12")
       CALL cp_fm_create(opt_pbpe%fm_tmp1_1, fm_struct, name="ks12-e*s12")
       CALL cp_fm_create(opt_pbpe%fm_tmp2_1, fm_struct, name="(ks12-e*s12)*d2")
 
-      CALL cp_fm_set_all(opt_pbpe%s_12, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%matrix_s_kp_block(1, 1, 2), 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ks_12, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%fm_tmp1_1, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%fm_tmp2_1, 0.0_dp)
@@ -583,13 +582,13 @@ CONTAINS
 
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%naos_in_pbpe(1))
-      ALLOCATE (opt_pbpe%s_21, opt_pbpe%ks_21, opt_pbpe%fm_tmp1_2, opt_pbpe%fm_tmp2_2)
-      CALL cp_fm_create(opt_pbpe%s_21, fm_struct, name="s_21")
+      ALLOCATE (opt_pbpe%ks_21, opt_pbpe%fm_tmp1_2, opt_pbpe%fm_tmp2_2)
+      CALL cp_fm_create(opt_pbpe%matrix_s_kp_block(1, 2, 1), fm_struct, name="s_21")
       CALL cp_fm_create(opt_pbpe%ks_21, fm_struct, name="ks_21")
       CALL cp_fm_create(opt_pbpe%fm_tmp1_2, fm_struct, name="ks2-e*s21")
       CALL cp_fm_create(opt_pbpe%fm_tmp2_2, fm_struct, name="(ks2-e*s21)*d1")
 
-      CALL cp_fm_set_all(opt_pbpe%s_21, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%matrix_s_kp_block(1, 2, 1), 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ks_21, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%fm_tmp1_2, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%fm_tmp2_2, 0.0_dp)
@@ -635,10 +634,10 @@ CONTAINS
       CALL cp_fm_to_fm_submat(opt_pbpe%matrix_s_ref_kp(1), opt_pbpe%matrix_s_kp_block(1, 2, 2), &
                               opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), &
                               opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
-      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_s_ref_kp(1), opt_pbpe%s_12, &
+      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_s_ref_kp(1), opt_pbpe%matrix_s_kp_block(1, 1, 2), &
                               opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), &
                               1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
-      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_s_ref_kp(1), opt_pbpe%s_21, &
+      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_s_ref_kp(1), opt_pbpe%matrix_s_kp_block(1, 2, 1), &
                               opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
                               opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1, 1)
 
