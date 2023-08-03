@@ -139,13 +139,14 @@ MODULE embed_types
                                                           max_in_dm_1_diff = 0.0_dp, max_in_dm_2_diff = 0.0_dp, max_in_dm_total_diff = 0.0_dp, &
                                                           norm_dm_1_diff = 0.0_dp, norm_dm_2_diff = 0.0_dp, norm_dm_total_diff = 0.0_dp
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)         :: max_diff
+      TYPE(cp_fm_type), DIMENSION(:), POINTER          :: matrix_s_ref_kp => NULL()
+      TYPE(cp_fm_type), DIMENSION(:, :, :), POINTER    :: matrix_s_kp_block => NULL()
       TYPE(cp_fm_type), POINTER                        :: dm_1 => NULL(), dm_2 => NULL(), dm_total => NULL(), &
                                                           dm_1_new => NULL(), dm_2_new => NULL(), dm_total_new => NULL(), &
                                                           dm_1_beta => NULL(), dm_2_beta => NULL(), dm_total_beta => NULL(), &
                                                           dm_1_beta_new => NULL(), dm_2_beta_new => NULL(), dm_total_beta_new => NULL(), &
                                                           dm_1_diff => NULL(), dm_2_diff => NULL(), dm_total_diff => NULL(), &
                                                           dm_1_diff_beta => NULL(), dm_2_diff_beta => NULL(), dm_total_diff_beta => NULL(), &
-                                                          s_1 => NULL(), s_2 => NULL(), s_total => NULL(), &
                                                           ks_1 => NULL(), ks_2 => NULL(), ks_total => NULL(), &
                                                           ks_1_in_2 => NULL(), ks_2_in_1 => NULL(), &
                                                           s_12 => NULL(), s_21 => NULL(), &
@@ -153,7 +154,7 @@ MODULE embed_types
                                                           work1_1 => NULL(), work1_2 => NULL(), &
                                                           work2_1 => NULL(), work2_2 => NULL(), &
                                                           ortho_1 => NULL(), ortho_2 => NULL(), &
-                                                          projection_1 => NULL(), projection_2 => NULL(), & 
+                                                          projection_1 => NULL(), projection_2 => NULL(), &
                                                           projection_environment => NULL(), &
                                                           fm_tmp1_1 => NULL(), fm_tmp2_1 => NULL(), fm_tmp3_1 => NULL(), &
                                                           fm_tmp1_2 => NULL(), fm_tmp2_2 => NULL(), fm_tmp3_2 => NULL()

@@ -127,7 +127,7 @@ MODULE force_env_methods
                                               build_pbpe_ref_subsys_dm,&
                                               calculate_embedded_ks_matrix,&
                                               calculate_pbpe_dm_difference,&
-                                              check_pbpe_system,& 
+                                              check_pbpe_system,&
                                               copy_ks_from_qs_to_pbpe,&
                                               pbpe_check_scf_exit,&
                                               pbpe_do_diagonalization,&
@@ -2170,7 +2170,7 @@ CONTAINS
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'pbpe_embedding'
 
-      INTEGER                                            :: handle, & 
+      INTEGER                                            :: handle, &
                                                             i_force_eval, i_iter, i_spin, &
                                                             nforce_eval, nspins, nspins_subsys, &
                                                             output_unit
@@ -2225,7 +2225,7 @@ CONTAINS
 
       ! Low-level iterative optimization
       low_level_loop:  DO i_iter = 1, opt_pbpe%n_iter
-         opt_pbpe%i_iter = i_iter 
+         opt_pbpe%i_iter = i_iter
 
          ! Copy total density matrix and Kohn-Sham matrix to qs_env
          CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_total, force_env%sub_force_env(ref_subsys_number)%force_env%qs_env)

@@ -3392,7 +3392,7 @@ CONTAINS
       CALL section_add_subsection(section, subsection)
       CALL section_release(subsection)
 
-      ! Embedding subsections: DFET, DMFET and PBPE 
+      ! Embedding subsections: DFET, DMFET and PBPE
       CALL create_optimize_embed(subsection)
       CALL section_add_subsection(section, subsection)
       CALL section_release(subsection)
@@ -6168,7 +6168,7 @@ CONTAINS
       CALL section_create(section, __LOCATION__, name="OPT_PBPE", &
                           description="This section specifies optional parameters for PBPE potential optimization.", &
                           n_keywords=4, n_subsections=0, repeats=.FALSE.)
-   
+
       NULLIFY(keyword, subsection)
 
       CALL keyword_create(keyword, __LOCATION__, name="N_ITER", &
