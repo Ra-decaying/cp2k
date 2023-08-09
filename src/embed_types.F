@@ -140,6 +140,7 @@ MODULE embed_types
                                                           norm_dm_1_diff = 0.0_dp, norm_dm_2_diff = 0.0_dp, norm_dm_total_diff = 0.0_dp
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)         :: max_diff
       TYPE(cp_fm_type), DIMENSION(:), POINTER          :: matrix_ks_ref_kp => NULL(), matrix_s_ref_kp => NULL()
+      TYPE(cp_fm_type), DIMENSION(:, :), POINTER       :: matrix_ks_emb_kp_subsys => NULL()
       TYPE(cp_fm_type), DIMENSION(:, :, :), POINTER    :: matrix_ks_kp_block => NULL(), matrix_s_kp_block => NULL()
       TYPE(cp_fm_type), POINTER                        :: dm_1 => NULL(), dm_2 => NULL(), dm_total => NULL(), &
                                                           dm_1_new => NULL(), dm_2_new => NULL(), dm_total_new => NULL(), &
@@ -147,7 +148,6 @@ MODULE embed_types
                                                           dm_1_beta_new => NULL(), dm_2_beta_new => NULL(), dm_total_beta_new => NULL(), &
                                                           dm_1_diff => NULL(), dm_2_diff => NULL(), dm_total_diff => NULL(), &
                                                           dm_1_diff_beta => NULL(), dm_2_diff_beta => NULL(), dm_total_diff_beta => NULL(), &
-                                                          ks_1_in_2 => NULL(), ks_2_in_1 => NULL(), &
                                                           work1_1 => NULL(), work1_2 => NULL(), &
                                                           work2_1 => NULL(), work2_2 => NULL(), &
                                                           ortho_1 => NULL(), ortho_2 => NULL(), &

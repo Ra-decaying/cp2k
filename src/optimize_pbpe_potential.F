@@ -166,9 +166,9 @@ CONTAINS
          ! projection_2 = -0.5 * fm_tmp3_1 * (fm_tmp3_1 ^ T)
          CALL cp_fm_to_fm(opt_pbpe%fm_tmp3_1, opt_pbpe%projection_2)
          CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp3_1, -0.5_dp, opt_pbpe%projection_2)
-         ! Calculate ks_1_in_2
-         CALL cp_fm_to_fm(opt_pbpe%matrix_ks_kp_block(1, 1, 1), opt_pbpe%ks_1_in_2)
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%ks_1_in_2, 1.0_dp, opt_pbpe%projection_2)
+         ! Calculate matrix_ks_emb_kp_subsys(1, 1)
+         CALL cp_fm_to_fm(opt_pbpe%matrix_ks_kp_block(1, 1, 1), opt_pbpe%matrix_ks_emb_kp_subsys(1, 1))
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%matrix_ks_emb_kp_subsys(1, 1), 1.0_dp, opt_pbpe%projection_2)
       ELSE IF (subsys_num .EQ. 2) THEN
          ! fm_tmp1_2 = ks_21 - fermi_energy * s_21
          CALL cp_fm_to_fm(opt_pbpe%matrix_ks_kp_block(1, 2, 1), opt_pbpe%fm_tmp1_2)
@@ -182,9 +182,9 @@ CONTAINS
          ! projection_1 = -0.5 * fm_tmp3_2 * (fm_tmp3_2 ^ T)
          CALL cp_fm_to_fm(opt_pbpe%fm_tmp3_2, opt_pbpe%projection_1)
          CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp3_2, -0.5_dp, opt_pbpe%projection_1)
-         ! Calculate ks_2_in_1
-         CALL cp_fm_to_fm(opt_pbpe%matrix_ks_kp_block(1, 2, 2), opt_pbpe%ks_2_in_1)
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%ks_2_in_1, 1.0_dp, opt_pbpe%projection_1)
+         ! Calculate matrix_ks_emb_kp_subsys(1, 2)
+         CALL cp_fm_to_fm(opt_pbpe%matrix_ks_kp_block(1, 2, 2), opt_pbpe%matrix_ks_emb_kp_subsys(1, 2))
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%matrix_ks_emb_kp_subsys(1, 2), 1.0_dp, opt_pbpe%projection_1)
       END IF
 
    END SUBROUTINE calculate_embedded_ks_matrix
@@ -427,6 +427,9 @@ CONTAINS
       NULLIFY (opt_pbpe%matrix_ks_kp_block)
       ALLOCATE (opt_pbpe%matrix_ks_kp_block(1, 2, 2))
 
+      NULLIFY (opt_pbpe%matrix_ks_emb_kp_subsys)
+      ALLOCATE (opt_pbpe%matrix_ks_emb_kp_subsys(1, 2))
+
       NULLIFY (blacs_env)
       CALL cp_blacs_env_create(blacs_env=blacs_env, para_env=para_env)
 
@@ -436,7 +439,6 @@ CONTAINS
       NULLIFY (opt_pbpe%dm_1_beta_new, opt_pbpe%dm_2_beta_new, opt_pbpe%dm_total_beta_new)
       NULLIFY (opt_pbpe%dm_1_diff, opt_pbpe%dm_2_diff, opt_pbpe%dm_total_diff)
       NULLIFY (opt_pbpe%dm_1_diff_beta, opt_pbpe%dm_2_diff_beta, opt_pbpe%dm_total_diff_beta)
-      NULLIFY (opt_pbpe%ks_1_in_2, opt_pbpe%ks_2_in_1)
       NULLIFY (opt_pbpe%work1_1, opt_pbpe%work1_2)
       NULLIFY (opt_pbpe%work2_1, opt_pbpe%work2_2)
       NULLIFY (opt_pbpe%ortho_1, opt_pbpe%ortho_2)
@@ -479,14 +481,14 @@ CONTAINS
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(1), ncol_global=opt_pbpe%naos_in_pbpe(1))
       ALLOCATE (opt_pbpe%dm_1, opt_pbpe%dm_1_new, opt_pbpe%dm_1_diff, &
-                opt_pbpe%ks_1_in_2, opt_pbpe%work1_1, opt_pbpe%work2_1, &
+                opt_pbpe%work1_1, opt_pbpe%work2_1, &
                 opt_pbpe%ortho_1, opt_pbpe%projection_2, opt_pbpe%fm_tmp3_1)
       CALL cp_fm_create(opt_pbpe%dm_1, fm_struct, name="DENSITY MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%dm_1_new, fm_struct, name="dm_1_new")
       CALL cp_fm_create(opt_pbpe%dm_1_diff, fm_struct, name="dm_1_diff")
       CALL cp_fm_create(opt_pbpe%matrix_s_kp_block(1, 1, 1), fm_struct, name="OVERLAP MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%matrix_ks_kp_block(1, 1, 1), fm_struct, name="KOHN-SHAM MATRIX OF SUBSYSTEM 1")
-      CALL cp_fm_create(opt_pbpe%ks_1_in_2, fm_struct, name="EMBEDDED KOHN-SHAM MATRIX OF SUBSYSTEM 1")
+      CALL cp_fm_create(opt_pbpe%matrix_ks_emb_kp_subsys(1, 1), fm_struct, name="EMBEDDED KOHN-SHAM MATRIX OF SUBSYSTEM 1")
       CALL cp_fm_create(opt_pbpe%work1_1, fm_struct, name="work1_1")
       CALL cp_fm_create(opt_pbpe%work2_1, fm_struct, name="work2_1")
       CALL cp_fm_create(opt_pbpe%ortho_1, fm_struct, name="ORTHO OF SUBSYSTEM 1")
@@ -498,7 +500,7 @@ CONTAINS
       CALL cp_fm_set_all(opt_pbpe%dm_1_diff, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%matrix_s_kp_block(1, 1, 1), 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%matrix_ks_kp_block(1, 1, 1), 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%ks_1_in_2, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%matrix_ks_emb_kp_subsys(1, 1), 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%work1_1, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%work2_1, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ortho_1, 0.0_dp)
@@ -524,14 +526,14 @@ CONTAINS
       CALL cp_fm_struct_create(fm_struct, para_env=para_env, context=blacs_env, &
                                nrow_global=opt_pbpe%naos_in_pbpe(2), ncol_global=opt_pbpe%naos_in_pbpe(2))
       ALLOCATE (opt_pbpe%dm_2, opt_pbpe%dm_2_new, opt_pbpe%dm_2_diff, &
-                opt_pbpe%ks_2_in_1, opt_pbpe%work1_2, opt_pbpe%work2_2, &
+                opt_pbpe%work1_2, opt_pbpe%work2_2, &
                 opt_pbpe%ortho_2, opt_pbpe%projection_1, opt_pbpe%fm_tmp3_2)
       CALL cp_fm_create(opt_pbpe%dm_2, fm_struct, name="DENSITY MATRIX OF SUBSYSTEM 2")
       CALL cp_fm_create(opt_pbpe%dm_2_new, fm_struct, name="dm_2_new")
       CALL cp_fm_create(opt_pbpe%dm_2_diff, fm_struct, name="dm_2_diff")
       CALL cp_fm_create(opt_pbpe%matrix_s_kp_block(1, 2, 2), fm_struct, name="OVERLAP MATRIX OF SUBSYSTEM 2")
       CALL cp_fm_create(opt_pbpe%matrix_ks_kp_block(1, 2, 2), fm_struct, name="KOHN-SHAM MATRIX OF SUBSYSTEM 2")
-      CALL cp_fm_create(opt_pbpe%ks_2_in_1, fm_struct, name="EMBEDDED KOHN-SHAM MATRIX OF SUBSYSTEM 2")
+      CALL cp_fm_create(opt_pbpe%matrix_ks_emb_kp_subsys(1, 2), fm_struct, name="EMBEDDED KOHN-SHAM MATRIX OF SUBSYSTEM 2")
       CALL cp_fm_create(opt_pbpe%work1_2, fm_struct, name="work1_2")
       CALL cp_fm_create(opt_pbpe%work2_2, fm_struct, name="work2_2")
       CALL cp_fm_create(opt_pbpe%ortho_2, fm_struct, name="ORTHO OF SUBSYSTEM 2")
@@ -543,7 +545,7 @@ CONTAINS
       CALL cp_fm_set_all(opt_pbpe%dm_2_diff, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%matrix_s_kp_block(1, 2, 2), 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%matrix_ks_kp_block(1, 2, 2), 0.0_dp)
-      CALL cp_fm_set_all(opt_pbpe%ks_2_in_1, 0.0_dp)
+      CALL cp_fm_set_all(opt_pbpe%matrix_ks_emb_kp_subsys(1, 2), 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%work1_2, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%work2_2, 0.0_dp)
       CALL cp_fm_set_all(opt_pbpe%ortho_2, 0.0_dp)
@@ -691,13 +693,13 @@ CONTAINS
 
       CPASSERT((subsys_num .EQ. 1) .OR. (subsys_num .EQ. 2))
       IF (subsys_num .EQ. 1) THEN
-         CALL cp_fm_to_fm(opt_pbpe%ks_1_in_2, opt_pbpe%work1_1)
+         CALL cp_fm_to_fm(opt_pbpe%matrix_ks_emb_kp_subsys(1, 1), opt_pbpe%work1_1)
          CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_1, mo_set=opt_pbpe%mos_kp_subsys(1, 1), &
                                ortho=opt_pbpe%ortho_1, work=opt_pbpe%work2_1, &
                                do_level_shift=.FALSE., level_shift=0.0_dp, &
                                use_jacobi=.FALSE., jacobi_threshold=0.0_dp)
       ELSE IF (subsys_num .EQ. 2) THEN
-         CALL cp_fm_to_fm(opt_pbpe%ks_2_in_1, opt_pbpe%work1_2)
+         CALL cp_fm_to_fm(opt_pbpe%matrix_ks_emb_kp_subsys(1, 2), opt_pbpe%work1_2)
          CALL eigensolver_symm(matrix_ks_fm=opt_pbpe%work1_2, mo_set=opt_pbpe%mos_kp_subsys(1, 2), &
                                ortho=opt_pbpe%ortho_2, work=opt_pbpe%work2_2, &
                                do_level_shift=.FALSE., level_shift=0.0_dp, &
@@ -828,9 +830,9 @@ CONTAINS
       IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
                                            "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES"), cp_p_file)) THEN
          iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES", extension=".Log")
-         CALL write_fm_with_basis_info(opt_pbpe%ks_1_in_2, 4, after, qs_env=qs_env_1, &
+         CALL write_fm_with_basis_info(opt_pbpe%matrix_ks_emb_kp_subsys(1, 1), 4, after, qs_env=qs_env_1, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
-         CALL write_fm_with_basis_info(opt_pbpe%ks_2_in_1, 4, after, qs_env=qs_env_2, &
+         CALL write_fm_with_basis_info(opt_pbpe%matrix_ks_emb_kp_subsys(1, 2), 4, after, qs_env=qs_env_2, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
          CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES")
       END IF
@@ -1046,11 +1048,6 @@ CONTAINS
          DEALLOCATE (opt_pbpe%dm_1_diff)
          NULLIFY (opt_pbpe%dm_1_diff)
       END IF
-      IF (ASSOCIATED(opt_pbpe%ks_1_in_2)) THEN
-         CALL cp_fm_release(opt_pbpe%ks_1_in_2)
-         DEALLOCATE (opt_pbpe%ks_1_in_2)
-         NULLIFY (opt_pbpe%ks_1_in_2)
-      END IF
       IF (ASSOCIATED(opt_pbpe%work1_1)) THEN
          CALL cp_fm_release(opt_pbpe%work1_1)
          DEALLOCATE (opt_pbpe%work1_1)
@@ -1094,11 +1091,6 @@ CONTAINS
          CALL cp_fm_release(opt_pbpe%dm_2_diff)
          DEALLOCATE (opt_pbpe%dm_2_diff)
          NULLIFY (opt_pbpe%dm_2_diff)
-      END IF
-      IF (ASSOCIATED(opt_pbpe%ks_2_in_1)) THEN
-         CALL cp_fm_release(opt_pbpe%ks_2_in_1)
-         DEALLOCATE (opt_pbpe%ks_2_in_1)
-         NULLIFY (opt_pbpe%ks_2_in_1)
       END IF
       IF (ASSOCIATED(opt_pbpe%work1_2)) THEN
          CALL cp_fm_release(opt_pbpe%work1_2)
@@ -1252,7 +1244,7 @@ CONTAINS
 
       CALL get_qs_env(force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, matrix_ks_kp=matrix_ks)
       CALL copy_dbcsr_to_fm(matrix_ks(1, 1)%matrix, fm_ks)
-      CALL cp_fm_to_fm(opt_pbpe%ks_2_in_1, fm_v_proj_emb)
+      CALL cp_fm_to_fm(opt_pbpe%matrix_ks_emb_kp_subsys(1, 2), fm_v_proj_emb)
       CALL cp_fm_scale_and_add(1.0_dp, fm_v_proj_emb, -1.0_dp, fm_ks)
 
       CALL dbcsr_allocate_matrix_set(matrix_v_proj_emb_cluster, 1, 1)
