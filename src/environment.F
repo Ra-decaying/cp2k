@@ -25,7 +25,10 @@ MODULE environment
    USE cp_files,                        ONLY: close_file,&
                                               get_data_dir,&
                                               open_file
-   USE cp_fm_diag,                      ONLY: diag_finalize,&
+   USE cp_fm_diag,                      ONLY: FM_DIAG_TYPE_CUSOLVER,&
+                                              FM_DIAG_TYPE_ELPA,&
+                                              FM_DIAG_TYPE_SCALAPACK,&
+                                              diag_finalize,&
                                               diag_init,&
                                               eps_check_diag_default
    USE cp_fm_diag_utils,                ONLY: cp_fm_redistribute_init
@@ -59,9 +62,9 @@ MODULE environment
    USE header,                          ONLY: cp2k_footer,&
                                               cp2k_header
    USE input_constants,                 ONLY: &
-        callgraph_all, callgraph_none, do_cosma, do_cp2k, do_dgemm_blas, do_dgemm_spla, &
-        do_diag_elpa, do_diag_scalapack, do_eip, do_farming, do_fft_fftw3, do_fft_sg, do_fist, &
-        do_qs, do_scalapack, do_sirius, do_test, energy_run, mol_dyn_run, none_run
+        callgraph_all, callgraph_none, do_cosma, do_cp2k, do_dgemm_blas, do_dgemm_spla, do_eip, &
+        do_farming, do_fft_fftw3, do_fft_sg, do_fist, do_qs, do_scalapack, do_sirius, do_test, &
+        energy_run, mol_dyn_run, none_run
    USE input_cp2k_global,               ONLY: create_global_section
    USE input_enumeration_types,         ONLY: enum_i2c,&
                                               enumeration_type
@@ -70,7 +73,7 @@ MODULE environment
    USE input_section_types,             ONLY: &
         section_get_ival, section_get_keyword, section_get_lval, section_get_rval, &
         section_release, section_type, section_vals_get, section_vals_get_subs_vals, &
-        section_vals_get_subs_vals3, section_vals_type, section_vals_val_get
+        section_vals_get_subs_vals3, section_vals_type, section_vals_val_get, section_vals_val_set
    USE kinds,                           ONLY: default_path_length,&
                                               default_string_length,&
                                               dp,&
@@ -340,8 +343,9 @@ CONTAINS
       TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(global_environment_type), POINTER             :: globenv
 
+      CHARACTER(LEN=3*default_string_length)             :: message
       CHARACTER(len=default_string_length)               :: c_val
-      INTEGER                                            :: iw
+      INTEGER                                            :: i, iw
       TYPE(cp_logger_type), POINTER                      :: logger
 
       ! Read the input/output section
@@ -355,11 +359,24 @@ CONTAINS
          CALL cp_logger_set(logger, &
                             local_filename=TRIM(c_val)//"_localLog")
       END IF
+
+      ! Process project name
       CALL section_vals_val_get(root_section, "GLOBAL%PROJECT", c_val=c_val)
+      IF (INDEX(c_val(:LEN_TRIM(c_val)), " ") > 0) THEN
+         message = "Project name <"//TRIM(c_val)// &
+                   "> contains spaces which will be replaced with underscores"
+         CPWARN(TRIM(message))
+         DO i = 1, LEN_TRIM(c_val)
+            ! Replace space with underscore
+            IF (c_val(i:i) == " ") c_val(i:i) = "_"
+         END DO
+         CALL section_vals_val_set(root_section, "GLOBAL%PROJECT", c_val=TRIM(c_val))
+      END IF
       IF (c_val /= "") THEN
          CALL cp_logger_set(logger, local_filename=TRIM(c_val)//"_localLog")
       END IF
       logger%iter_info%project_name = c_val
+
       CALL section_vals_val_get(root_section, "GLOBAL%PRINT_LEVEL", i_val=logger%iter_info%print_level)
 
       ! Read the CP2K section
@@ -487,7 +504,7 @@ CONTAINS
       CHARACTER(len=default_path_length)                 :: basis_set_file_name, coord_file_name, &
                                                             mm_potential_file_name, &
                                                             potential_file_name
-      CHARACTER(len=default_string_length)               :: env_num, model_name, project_name
+      CHARACTER(LEN=default_string_length)               :: env_num, model_name, project_name
       CHARACTER(LEN=default_string_length), &
          DIMENSION(:), POINTER                           :: trace_routines
       INTEGER :: cpuid, cpuid_static, i_dgemm, i_diag, i_fft, i_grid_backend, iforce_eval, &
@@ -529,7 +546,6 @@ CONTAINS
       IF (unit_nr > 0) globenv%elpa_print = .TRUE.
       CALL cp_print_key_finished_output(unit_nr, logger, global_section, "PRINT_ELPA")
       CALL section_vals_val_get(global_section, "PREFERRED_FFT_LIBRARY", i_val=i_fft)
-
       CALL section_vals_val_get(global_section, "PRINT_LEVEL", i_val=print_level)
       CALL section_vals_val_get(global_section, "PROGRAM_NAME", i_val=globenv%prog_name_id)
       CALL section_vals_val_get(global_section, "FFT_POOL_SCRATCH_LIMIT", i_val=globenv%fft_pool_scratch_limit)
@@ -577,11 +593,13 @@ CONTAINS
       CALL section_vals_val_get(global_section, "TIMINGS%TIME_MPI", l_val=mp_collect_timings)
 
       SELECT CASE (i_diag)
-      CASE (do_diag_scalapack)
+      CASE (FM_DIAG_TYPE_SCALAPACK)
          globenv%diag_library = "ScaLAPACK"
-      CASE (do_diag_elpa)
+      CASE (FM_DIAG_TYPE_ELPA)
          globenv%diag_library = "ELPA"
          CALL cite_reference(Marek2014)
+      CASE (FM_DIAG_TYPE_CUSOLVER)
+         globenv%diag_library = "cuSOLVER"
       CASE DEFAULT
          CPABORT("Unknown diagonalization library specified")
       END SELECT

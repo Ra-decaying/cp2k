@@ -2,14 +2,10 @@
   METHOD Quickstep
   &PROPERTIES
     &TDDFPT
-       KERNEL FULL
+       KERNEL NONE
        NSTATES      1
        MAX_ITER    50
        CONVERGENCE [eV] 1.0e-7
-       &XC
-         &XC_FUNCTIONAL PADE
-         &END XC_FUNCTIONAL
-       &END XC
     &END TDDFPT
   &END PROPERTIES
   &DFT
@@ -41,7 +37,7 @@
       EPS_SCF 1.0E-7
     &END SCF
     &XC
-      &XC_FUNCTIONAL PADE
+      &XC_FUNCTIONAL PBE
       &END XC_FUNCTIONAL
     &END XC
     &POISSON
@@ -51,7 +47,7 @@
   &END DFT
   &SUBSYS
     &CELL
-      ABC [angstrom] 8.0 8.0 8.0
+      ABC [angstrom] 6.0 6.0 6.0
       PERIODIC NONE
     &END
     &COORD

@@ -62,6 +62,7 @@ list(
   atom_utils.F
   atom_xc.F
   auto_basis.F
+  bandstructure_methods.F
   basis_set_output.F
   beta_gamma_psi.F
   block_p_types.F
@@ -128,6 +129,7 @@ list(
   ec_env_types.F
   ec_methods.F
   ec_orth_solver.F
+  ed_analysis.F
   efield_tb_methods.F
   efield_utils.F
   eip_environment.F
@@ -199,6 +201,10 @@ list(
   group_dist_types.F
   grrm_utils.F
   gapw_1c_basis_set.F
+  gw_communication.F
+  gw_methods.F
+  gw_types.F
+  gw_utils.F
   hartree_local_methods.F
   hartree_local_types.F
   header.F
@@ -461,6 +467,10 @@ list(
   qs_2nd_kernel_ao.F
   qs_active_space_methods.F
   qs_active_space_types.F
+  qs_active_space_utils.F
+  qcschema.F
+  hdf5_wrapper.F
+  sockets_interface.F
   qs_atomic_block.F
   qs_band_structure.F
   qs_basis_gradient.F
@@ -642,6 +652,7 @@ list(
   qs_spin_orbit.F
   qs_subsys_methods.F
   qs_subsys_types.F
+  qs_tddfpt2_assign.F
   qs_tddfpt2_densities.F
   qs_tddfpt2_eigensolver.F
   qs_tddfpt2_fhxc.F
@@ -652,6 +663,9 @@ list(
   qs_tddfpt2_operators.F
   qs_tddfpt2_properties.F
   qs_tddfpt2_restart.F
+  qs_tddfpt2_soc.F
+  qs_tddfpt2_soc_utils.F
+  qs_tddfpt2_soc_types.F
   qs_tddfpt2_stda_types.F
   qs_tddfpt2_stda_utils.F
   qs_tddfpt2_subgroups.F
@@ -946,6 +960,7 @@ list(
   fm/cp_cfm_types.F
   fm/cp_fm_basic_linalg.F
   fm/cp_fm_cholesky.F
+  fm/cp_fm_cusolver_api.F
   fm/cp_fm_diag.F
   fm/cp_fm_diag_utils.F
   fm/cp_fm_elpa.F
@@ -953,6 +968,8 @@ list(
   fm/cp_fm_types.F
   fm/cp_fm_struct.F
   fm/cp_linked_list_fm.F)
+
+list(APPEND CP2K_SRCS_C fm/cp_fm_cusolver.c)
 
 list(APPEND CP2K_SRCS_F hfxbase/hfx_compression_core_methods.F
      hfxbase/hfx_contract_block.F hfxbase/hfx_contraction_methods.F)
@@ -1414,8 +1431,10 @@ if(CP2K_USE_CUDA)
   if(CP2K_USE_NVHPC)
     target_link_libraries(cp2k_cuda_libs INTERFACE NVHPC::MATH NVHPC::CUDA)
   else()
-    target_link_libraries(cp2k_cuda_libs INTERFACE CUDA::cufft CUDA::cufftw
-                                                   CUDA::cublas CUDA::cudart)
+    target_link_libraries(
+      cp2k_cuda_libs
+      INTERFACE $<$<BOOL:${CP2K_USE_CUSOLVER_MP}>:CUDA::cusolver> CUDA::cufft
+                CUDA::cufftw CUDA::cublas CUDA::cudart CUDA::cuda_driver)
   endif()
 endif()
 
@@ -1479,7 +1498,7 @@ set_target_properties(
   cp2k
   PROPERTIES IMPORTED_LINK_INTERFACE_LANGUAGES "CXX"
              Fortran_MODULE_DIRECTORY mod_files
-             POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS}
+             POSITION_INDEPENDENT_CODE ON
              VERSION ${cp2k_VERSION}
              SOVERSION ${cp2k_APIVERSION})
 
@@ -1576,6 +1595,7 @@ target_compile_definitions(
          $<$<BOOL:${CP2K_USE_LIBXSMM}>:__LIBXSMM>
          $<$<STREQUAL:${CP2K_BLAS_VENDOR},MKL>:__MKL>
          $<$<STREQUAL:${CP2K_BLAS_VENDOR},Apple>:__ACCELERATE>
+         $<$<BOOL:${CP2K_USE_CUSOLVER_MP}>:__CUSOLVERMP>
          $<$<BOOL:${CP2K_USE_CUDA}>:__OFFLOAD_CUDA>
          $<$<COMPILE_LANGUAGE:CUDA>:__OFFLOAD_CUDA>
          $<$<BOOL:${CP2K_USE_HIP}>:__HIP_PLATFORM_AMD__
@@ -1612,8 +1632,6 @@ list(
   "dbt_tas_unittest")
 
 add_executable(cp2k-bin start/cp2k.F)
-set_target_properties(
-  cp2k-bin PROPERTIES LINKER_LANGUAGE Fortran) # always use the Fortran compiler
 # for linking
 
 add_executable(memory_utilities_unittest common/memory_utilities_unittest.F)
@@ -1630,6 +1648,7 @@ set_target_properties(
   cp2k-bin
   PROPERTIES CXX_STANDARD 14
              IMPORTED_LINK_INTERFACE_LANGUAGES "CXX"
+             POSITION_INDEPENDENT_CODE ON
              LINKER_LANGUAGE "CXX"
              OUTPUT_NAME "cp2k.${__cp2k_ext}")
 
@@ -1640,6 +1659,7 @@ foreach(_app ${__CP2K_APPS})
     ${_app}
     PROPERTIES CXX_STANDARD 14
                IMPORTED_LINK_INTERFACE_LANGUAGES "CXX"
+               POSITION_INDEPENDENT_CODE ON
                LINKER_LANGUAGE "CXX"
                OUTPUT_NAME "${_app}.${__cp2k_ext}")
 
@@ -1702,6 +1722,7 @@ foreach(__app grid_miniapp grid_unittest dbm_miniapp)
     ${__app}
     PROPERTIES POSITION_INDEPENDENT_CODE ON
                LINKER_LANGUAGE C
+               POSITION_INDEPENDENT_CODE ON
                OUTPUT_NAME "${__app}.${__cp2k_ext}")
 
   if(CP2K_USE_HIP)

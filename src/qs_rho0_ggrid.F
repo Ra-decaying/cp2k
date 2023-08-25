@@ -31,6 +31,7 @@ MODULE qs_rho0_ggrid
    USE pw_methods,                      ONLY: pw_axpy,&
                                               pw_copy,&
                                               pw_integrate_function,&
+                                              pw_scale,&
                                               pw_transfer,&
                                               pw_zero
    USE pw_pool_types,                   ONLY: pw_pool_create_pw,&
@@ -58,9 +59,14 @@ MODULE qs_rho0_ggrid
    USE qs_rho_atom_types,               ONLY: get_rho_atom,&
                                               rho_atom_coeff,&
                                               rho_atom_type
-   USE realspace_grid_types,            ONLY: &
-        pw2rs, realspace_grid_desc_p_type, realspace_grid_desc_type, realspace_grid_type, rs2pw, &
-        rs_grid_create, rs_grid_release, rs_grid_zero, rs_pw_transfer
+   USE realspace_grid_types,            ONLY: realspace_grid_desc_p_type,&
+                                              realspace_grid_desc_type,&
+                                              realspace_grid_type,&
+                                              rs_grid_create,&
+                                              rs_grid_release,&
+                                              rs_grid_zero,&
+                                              transfer_pw2rs,&
+                                              transfer_rs2pw
    USE util,                            ONLY: get_limit
    USE virial_types,                    ONLY: virial_type
 #include "./base/base_uses.f90"
@@ -225,7 +231,7 @@ CONTAINS
       DEALLOCATE (pab)
 
       IF (igrid /= auxbas_grid) THEN
-         CALL rs_pw_transfer(rs_grid, coeff_rspace, rs2pw)
+         CALL transfer_rs2pw(rs_grid, coeff_rspace)
          CALL pw_zero(rho0_s_gs)
          CALL pw_transfer(coeff_rspace, coeff_gspace)
          CALL pw_axpy(coeff_gspace, rho0_s_gs)
@@ -239,7 +245,7 @@ CONTAINS
          CALL pw_pool_create_pw(pw_pool, rho0_r_tmp, &
                                 use_data=REALDATA3D, in_space=REALSPACE)
 
-         CALL rs_pw_transfer(rs_grid, rho0_r_tmp, rs2pw)
+         CALL transfer_rs2pw(rs_grid, rho0_r_tmp)
 
          tot_rs_int = pw_integrate_function(rho0_r_tmp, isign=-1)
 
@@ -295,8 +301,7 @@ CONTAINS
          ALLOCATE (rho0_mpole%rho0_s_gs)
       END IF
       CALL pw_pool_create_pw(auxbas_pw_pool, rho0_mpole%rho0_s_gs, &
-                             use_data=COMPLEXDATA1D)
-      rho0_mpole%rho0_s_gs%in_space = RECIPROCALSPACE
+                             use_data=COMPLEXDATA1D, in_space=RECIPROCALSPACE)
 
       ! Find the grid level suitable for rho0_soft
       rho0_mpole%igrid_zet0_s = gaussian_gridlevel(pw_env%gridlevel_info, 2.0_dp*rho0_mpole%zet0_h)
@@ -312,14 +317,20 @@ CONTAINS
 !> \param para_env ...
 !> \param calculate_forces ...
 !> \param local_rho_set ...
+!> \param local_rho_set_2nd ...
+!> \param atener ...
+!> \param kforce ...
 ! **************************************************************************************************
-   SUBROUTINE integrate_vhg0_rspace(qs_env, v_rspace, para_env, calculate_forces, local_rho_set)
+   SUBROUTINE integrate_vhg0_rspace(qs_env, v_rspace, para_env, calculate_forces, local_rho_set, &
+                                    local_rho_set_2nd, atener, kforce)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(pw_type), INTENT(IN)                          :: v_rspace
       TYPE(mp_para_env_type), POINTER                    :: para_env
       LOGICAL, INTENT(IN)                                :: calculate_forces
-      TYPE(local_rho_type), OPTIONAL, POINTER            :: local_rho_set
+      TYPE(local_rho_type), OPTIONAL, POINTER            :: local_rho_set, local_rho_set_2nd
+      REAL(KIND=dp), DIMENSION(:), OPTIONAL              :: atener
+      REAL(KIND=dp), INTENT(IN), OPTIONAL                :: kforce
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'integrate_vhg0_rspace'
 
@@ -331,8 +342,8 @@ CONTAINS
       INTEGER, ALLOCATABLE, DIMENSION(:, :, :)           :: cg_list
       INTEGER, DIMENSION(:), POINTER                     :: atom_list, lmax, lmin, npgf
       LOGICAL                                            :: grid_distributed, paw_atom, use_virial
-      REAL(KIND=dp)                                      :: eps_rho_rspace, force_tmp(3), ra(3), &
-                                                            rpgf0, scale, zet0
+      REAL(KIND=dp)                                      :: eps_rho_rspace, force_tmp(3), fscale, &
+                                                            ra(3), rpgf0, zet0
       REAL(KIND=dp), DIMENSION(3, 3)                     :: my_virial_a, my_virial_b
       REAL(KIND=dp), DIMENSION(:), POINTER               :: hab_sph, norm_l, Qlm
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: hab, hdab_sph, intloc, pab
@@ -368,9 +379,9 @@ CONTAINS
       ! attribute 'OPTIONAL' from the argument 'local_rho_set'.
 
       ! CPASSERT(.NOT. (calculate_forces .AND. PRESENT(local_rho_set)))
-      IF (calculate_forces .AND. PRESENT(local_rho_set)) THEN
-         CPWARN("Forces and External Density")
-      END IF
+!      IF (calculate_forces .AND. PRESENT(local_rho_set)) THEN
+!         CPWARN("Forces and External Density!")
+!      END IF
 
       NULLIFY (atomic_kind_set, qs_kind_set, dft_control, particle_set)
       NULLIFY (cell, force, pw_env, rho0_mpole, rho_atom_set)
@@ -405,7 +416,12 @@ CONTAINS
 
       IF (PRESENT(local_rho_set)) &
          CALL get_local_rho(local_rho_set, rho0_mpole=rho0_mpole, rho_atom_set=rho_atom_set)
-
+      ! Q from rho0_mpole of local_rho_set
+      ! for TDDFT forces we need mixed potential / integral space
+      ! potential stored on local_rho_set_2nd
+      IF (PRESENT(local_rho_set_2nd)) THEN
+         CALL get_local_rho(local_rho_set_2nd, rho_atom_set=rho_atom_set)
+      END IF
       CALL get_rho0_mpole(rho0_mpole=rho0_mpole, lmax_0=lmax0, &
                           zet0_h=zet0, igrid_zet0_s=igrid, &
                           norm_g0l_h=norm_l)
@@ -441,8 +457,8 @@ CONTAINS
          CALL pw_pool_give_back_pw(pw_aux, coeff_gaux)
          CALL pw_pool_create_pw(pw_aux, coeff_raux, use_data=REALDATA3D, &
                                 in_space=REALSPACE)
-         scale = coeff_rspace%pw_grid%dvol/coeff_raux%pw_grid%dvol
-         coeff_rspace%cr3d = scale*coeff_rspace%cr3d
+         fscale = coeff_rspace%pw_grid%dvol/coeff_raux%pw_grid%dvol
+         CALL pw_scale(coeff_rspace, fscale)
          CALL pw_pool_give_back_pw(pw_aux, coeff_raux)
       ELSE
 
@@ -458,7 +474,7 @@ CONTAINS
       ! Setup the rs grid at level igrid
       CALL rs_grid_create(rs_v, rs_desc)
       CALL rs_grid_zero(rs_v)
-      CALL rs_pw_transfer(rs_v, coeff_rspace, pw2rs)
+      CALL transfer_pw2rs(rs_v, coeff_rspace)
 
       CALL pw_pool_give_back_pw(pw_pool, coeff_rspace)
 
@@ -482,6 +498,11 @@ CONTAINS
 
       grid_distributed = rs_v%desc%distributed
 
+      fscale = 1.0_dp
+      IF (PRESENT(kforce)) THEN
+         fscale = kforce
+      END IF
+
       DO ikind = 1, SIZE(atomic_kind_set, 1)
          NULLIFY (basis_1c_set, atom_list, harmonics)
          CALL get_atomic_kind(atomic_kind_set(ikind), atom_list=atom_list, natom=nat)
@@ -494,7 +515,7 @@ CONTAINS
 
          NULLIFY (Qlm_gg, lmax, npgf)
          CALL get_rho0_mpole(rho0_mpole=rho0_mpole, ikind=ikind, &
-                             l0_ikind=l0_ikind, Qlm_gg=Qlm_gg, &
+                             l0_ikind=l0_ikind, Qlm_gg=Qlm_gg, &  ! Qs different
                              rpgf0_s=rpgf0)
 
          CALL get_gto_basis_set(gto_basis_set=basis_1c_set, &
@@ -602,7 +623,7 @@ CONTAINS
                                  ig1 = iso1 + n1*(ipgf1 - 1) + m1
                                  ig2 = iso2 + n2*(ipgf2 - 1) + m2
 
-                                 intloc(ig1, ig2) = intloc(ig1, ig2) + Qlm_gg(ig1, ig2, iso)*hab_sph(iso)
+                                 intloc(ig1, ig2) = intloc(ig1, ig2) + Qlm_gg(ig1, ig2, iso)*hab_sph(iso) ! potential times Q
 
                               END DO ! icg
                            END DO ! iso
@@ -628,22 +649,29 @@ CONTAINS
                   END DO
                END IF
 
+               IF (PRESENT(atener)) THEN
+                  DO iso = 1, nsoset(l0_ikind)
+                     atener(iatom) = atener(iatom) + 0.5_dp*Qlm(iso)*hab_sph(iso)
+                  END DO
+               END IF
+
                IF (calculate_forces) THEN
                   force_tmp(1:3) = 0.0_dp
                   DO iso = 1, nsoset(l0_ikind)
-                     force_tmp(1) = force_tmp(1) + Qlm(iso)*hdab_sph(1, iso)
+                     force_tmp(1) = force_tmp(1) + Qlm(iso)*hdab_sph(1, iso) ! Q here is from local_rho_set
                      force_tmp(2) = force_tmp(2) + Qlm(iso)*hdab_sph(2, iso)
                      force_tmp(3) = force_tmp(3) + Qlm(iso)*hdab_sph(3, iso)
                   END DO
-                  force(ikind)%g0s_Vh_elec(1:3, iat) = force(ikind)%g0s_Vh_elec(1:3, iat) + force_tmp(1:3)
+                  force(ikind)%g0s_Vh_elec(1:3, iat) = force(ikind)%g0s_Vh_elec(1:3, iat) + fscale*force_tmp(1:3)
                END IF
                IF (use_virial) THEN
                   my_virial_a = 0.0_dp
                   DO iso = 1, nsoset(l0_ikind)
                      DO ii = 1, 3
                      DO i = 1, 3
-                        virial%pv_gapw(i, ii) = virial%pv_gapw(i, ii) + Qlm(iso)*a_hdab_sph(i, ii, iso)
-                        virial%pv_virial(i, ii) = virial%pv_virial(i, ii) + Qlm(iso)*a_hdab_sph(i, ii, iso)
+                        ! Q from local_rho_set
+                        virial%pv_gapw(i, ii) = virial%pv_gapw(i, ii) + fscale*Qlm(iso)*a_hdab_sph(i, ii, iso)
+                        virial%pv_virial(i, ii) = virial%pv_virial(i, ii) + fscale*Qlm(iso)*a_hdab_sph(i, ii, iso)
                      END DO
                      END DO
                   END DO

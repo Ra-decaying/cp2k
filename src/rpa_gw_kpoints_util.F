@@ -88,7 +88,7 @@ MODULE rpa_gw_kpoints_util
 
    PUBLIC :: invert_eps_compute_W_and_Erpa_kp, cp_cfm_power, real_space_to_kpoint_transform_rpa, &
              get_mat_cell_T_from_mat_gamma, get_bandstruc_and_k_dependent_MOs, &
-             compute_wkp_W
+             compute_wkp_W, mat_kp_from_mat_gamma, cp_cfm_upper_to_full
 
 CONTAINS
 
@@ -847,24 +847,30 @@ CONTAINS
 !> \param mat_real_space ...
 !> \param kpoints ...
 !> \param eps_filter_im_time ...
+!> \param real_mat_real_space ...
 ! **************************************************************************************************
    SUBROUTINE real_space_to_kpoint_transform_rpa(real_mat_kp, imag_mat_kp, mat_real_space, &
-                                                 kpoints, eps_filter_im_time)
+                                                 kpoints, eps_filter_im_time, real_mat_real_space)
 
       TYPE(dbcsr_p_type), DIMENSION(:), INTENT(INOUT)    :: real_mat_kp, imag_mat_kp, mat_real_space
       TYPE(kpoint_type), POINTER                         :: kpoints
       REAL(KIND=dp), INTENT(IN)                          :: eps_filter_im_time
+      LOGICAL, INTENT(IN), OPTIONAL                      :: real_mat_real_space
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'real_space_to_kpoint_transform_rpa'
 
       INTEGER                                            :: handle, i_cell, ik, nkp, num_cells
       INTEGER, DIMENSION(3)                              :: cell
       INTEGER, DIMENSION(:, :), POINTER                  :: index_to_cell
+      LOGICAL                                            :: my_real_mat_real_space
       REAL(KIND=dp)                                      :: arg, coskl, sinkl
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: xkp
       TYPE(dbcsr_type)                                   :: mat_work
 
       CALL timeset(routineN, handle)
+
+      my_real_mat_real_space = .TRUE.
+      IF (PRESENT(real_mat_real_space)) my_real_mat_real_space = real_mat_real_space
 
       CALL dbcsr_create(matrix=mat_work, &
                         template=real_mat_kp(1)%matrix, &
@@ -884,11 +890,11 @@ CONTAINS
 
       DO ik = 1, nkp
 
-         CALL dbcsr_set(real_mat_kp(ik)%matrix, 0.0_dp)
-         CALL dbcsr_set(imag_mat_kp(ik)%matrix, 0.0_dp)
-
          CALL dbcsr_reserve_all_blocks(real_mat_kp(ik)%matrix)
          CALL dbcsr_reserve_all_blocks(imag_mat_kp(ik)%matrix)
+
+         CALL dbcsr_set(real_mat_kp(ik)%matrix, 0.0_dp)
+         CALL dbcsr_set(imag_mat_kp(ik)%matrix, 0.0_dp)
 
          DO i_cell = 1, num_cells/2 + 1
 
@@ -898,15 +904,28 @@ CONTAINS
             coskl = COS(twopi*arg)
             sinkl = SIN(twopi*arg)
 
-            CALL dbcsr_add_local(real_mat_kp(ik)%matrix, mat_real_space(i_cell)%matrix, 1.0_dp, coskl)
-            CALL dbcsr_add_local(imag_mat_kp(ik)%matrix, mat_real_space(i_cell)%matrix, 1.0_dp, sinkl)
+            IF (my_real_mat_real_space) THEN
+               CALL dbcsr_add_local(real_mat_kp(ik)%matrix, mat_real_space(i_cell)%matrix, 1.0_dp, coskl)
+               CALL dbcsr_add_local(imag_mat_kp(ik)%matrix, mat_real_space(i_cell)%matrix, 1.0_dp, sinkl)
+            ELSE
+               CALL dbcsr_add_local(real_mat_kp(ik)%matrix, mat_real_space(i_cell)%matrix, 1.0_dp, -sinkl)
+               CALL dbcsr_add_local(imag_mat_kp(ik)%matrix, mat_real_space(i_cell)%matrix, 1.0_dp, coskl)
+            END IF
 
             IF (.NOT. (cell(1) == 0 .AND. cell(2) == 0 .AND. cell(3) == 0)) THEN
 
                CALL dbcsr_transposed(mat_work, mat_real_space(i_cell)%matrix)
 
-               CALL dbcsr_add_local(real_mat_kp(ik)%matrix, mat_work, 1.0_dp, coskl)
-               CALL dbcsr_add_local(imag_mat_kp(ik)%matrix, mat_work, 1.0_dp, -sinkl)
+               IF (my_real_mat_real_space) THEN
+                  CALL dbcsr_add_local(real_mat_kp(ik)%matrix, mat_work, 1.0_dp, coskl)
+                  CALL dbcsr_add_local(imag_mat_kp(ik)%matrix, mat_work, 1.0_dp, -sinkl)
+               ELSE
+                  ! for an imaginary real-space matrix, we need to consider the imaginary unit
+                  ! and we need to take into account that the transposed gives an extra "-" sign
+                  ! because the transposed is actually Hermitian conjugate
+                  CALL dbcsr_add_local(real_mat_kp(ik)%matrix, mat_work, 1.0_dp, -sinkl)
+                  CALL dbcsr_add_local(imag_mat_kp(ik)%matrix, mat_work, 1.0_dp, -coskl)
+               END IF
 
                CALL dbcsr_set(mat_work, 0.0_dp)
 
@@ -1045,7 +1064,7 @@ CONTAINS
       CALL cp_cfm_cholesky_invert(cfm_mat_Q)
 
       ! symmetrize the result
-      CALL own_cfm_upper_to_full(cfm_mat_Q, cfm_mat_work)
+      CALL cp_cfm_upper_to_full(cfm_mat_Q)
 
       ! subtract exchange part by subtracing identity matrix from epsilon
       CALL cp_cfm_get_info(matrix=cfm_mat_Q, &
@@ -1224,10 +1243,12 @@ CONTAINS
       CALL cp_fm_create(fm_work_Minv_W, fm_mat_W(1)%matrix_struct)
 
       DO jquad = 1, num_integ_points
+
          CALL parallel_gemm('N', 'N', dimen_RI, dimen_RI, dimen_RI, 1.0_dp, fm_work_Minv, fm_mat_W(jquad), &
                             0.0_dp, fm_work_Minv_W)
          CALL parallel_gemm('N', 'N', dimen_RI, dimen_RI, dimen_RI, 1.0_dp, fm_work_Minv_W, fm_work_Minv, &
                             0.0_dp, fm_mat_W(jquad))
+
       END DO
 
       CALL cp_fm_release(fm_work_Minv)
@@ -1404,19 +1425,21 @@ CONTAINS
 ! **************************************************************************************************
 !> \brief ...
 !> \param cfm_mat_Q ...
-!> \param cfm_mat_work ...
 ! **************************************************************************************************
-   SUBROUTINE own_cfm_upper_to_full(cfm_mat_Q, cfm_mat_work)
+   SUBROUTINE cp_cfm_upper_to_full(cfm_mat_Q)
 
-      TYPE(cp_cfm_type), INTENT(IN)                      :: cfm_mat_Q, cfm_mat_work
+      TYPE(cp_cfm_type), INTENT(IN)                      :: cfm_mat_Q
 
-      CHARACTER(LEN=*), PARAMETER :: routineN = 'own_cfm_upper_to_full'
+      CHARACTER(LEN=*), PARAMETER :: routineN = 'cp_cfm_upper_to_full'
 
       INTEGER                                            :: handle, i_global, iiB, j_global, jjB, &
                                                             ncol_local, nrow_local
       INTEGER, DIMENSION(:), POINTER                     :: col_indices, row_indices
+      TYPE(cp_cfm_type)                                  :: cfm_mat_work
 
       CALL timeset(routineN, handle)
+
+      CALL cp_cfm_create(cfm_mat_work, cfm_mat_Q%matrix_struct)
 
       ! get info of fm_mat_Q
       CALL cp_cfm_get_info(matrix=cfm_mat_Q, &
@@ -1442,25 +1465,25 @@ CONTAINS
 
       CALL cp_cfm_scale_and_add(z_one, cfm_mat_Q, z_one, cfm_mat_work)
 
+      CALL cp_cfm_release(cfm_mat_work)
+
       CALL timestop(handle)
 
-   END SUBROUTINE
+   END SUBROUTINE cp_cfm_upper_to_full
 
 ! **************************************************************************************************
 !> \brief ...
 !> \param qs_env ...
-!> \param kpoints ...
 !> \param Eigenval_kp ...
 ! **************************************************************************************************
-   SUBROUTINE get_bandstruc_and_k_dependent_MOs(qs_env, kpoints, Eigenval_kp)
+   SUBROUTINE get_bandstruc_and_k_dependent_MOs(qs_env, Eigenval_kp)
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(kpoint_type), POINTER                         :: kpoints
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:, :, :)     :: Eigenval_kp
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'get_bandstruc_and_k_dependent_MOs'
 
       INTEGER                                            :: handle, ikp, ispin, nmo, nspins
-      INTEGER, DIMENSION(3)                              :: nkp_grid_G, nkp_grid_W
+      INTEGER, DIMENSION(3)                              :: nkp_grid_G
       REAL(KIND=dp), DIMENSION(:), POINTER               :: ev
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: kpgeneral
       TYPE(kpoint_type), POINTER                         :: kpoints_Sigma
@@ -1473,7 +1496,6 @@ CONTAINS
                qs_env%mp2_env%ri_rpa_im_time%kpoints_Sigma_no_xc, &
                para_env)
 
-      nkp_grid_W(1:3) = kpoints%nkp_grid(1:3)
       nkp_grid_G(1:3) = (/1, 1, 1/)
 
       CALL get_qs_env(qs_env=qs_env, para_env=para_env)
@@ -1521,17 +1543,6 @@ CONTAINS
          DEALLOCATE (kpgeneral)
 
       END IF
-
-      DO ispin = 1, nspins
-         CALL dbcsr_release(qs_env%mp2_env%ri_g0w0%matrix_sigma_x_minus_vxc(ispin)%matrix)
-         DEALLOCATE (qs_env%mp2_env%ri_g0w0%matrix_sigma_x_minus_vxc(ispin)%matrix)
-
-         CALL dbcsr_release(qs_env%mp2_env%ri_g0w0%matrix_ks(ispin)%matrix)
-         DEALLOCATE (qs_env%mp2_env%ri_g0w0%matrix_ks(ispin)%matrix)
-      END DO
-
-      DEALLOCATE (qs_env%mp2_env%ri_g0w0%matrix_sigma_x_minus_vxc)
-      DEALLOCATE (qs_env%mp2_env%ri_g0w0%matrix_ks)
 
       CALL release_hfx_stuff(qs_env)
 
@@ -1736,14 +1747,16 @@ CONTAINS
 !> \param mat_gamma ...
 !> \param kpoints ...
 !> \param ispin ...
+!> \param real_mat_real_space ...
 ! **************************************************************************************************
-   SUBROUTINE mat_kp_from_mat_gamma(qs_env, mat_kp, mat_gamma, kpoints, ispin)
+   SUBROUTINE mat_kp_from_mat_gamma(qs_env, mat_kp, mat_gamma, kpoints, ispin, real_mat_real_space)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: mat_kp
       TYPE(dbcsr_type)                                   :: mat_gamma
       TYPE(kpoint_type), POINTER                         :: kpoints
       INTEGER                                            :: ispin
+      LOGICAL, INTENT(IN), OPTIONAL                      :: real_mat_real_space
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'mat_kp_from_mat_gamma'
 
@@ -1791,7 +1804,12 @@ CONTAINS
          END DO
       END IF
 
-      CALL real_space_to_kpoint_transform_rpa(mat_kp(:, 1), mat_kp(:, 2), mat_real_space, kpoints, 0.0_dp)
+      IF (PRESENT(real_mat_real_space)) THEN
+         CALL real_space_to_kpoint_transform_rpa(mat_kp(:, 1), mat_kp(:, 2), mat_real_space, kpoints, 0.0_dp, &
+                                                 real_mat_real_space)
+      ELSE
+         CALL real_space_to_kpoint_transform_rpa(mat_kp(:, 1), mat_kp(:, 2), mat_real_space, kpoints, 0.0_dp)
+      END IF
 
       DO i_cell = 1, num_cells
          CALL dbcsr_deallocate_matrix(mat_real_space(i_cell)%matrix)

@@ -185,7 +185,7 @@ CONTAINS
       LOGICAL :: do_adiabatic_rescaling, do_ddapc, do_hfx, do_ppl, gapw, gapw_xc, &
          hfx_treat_lsd_in_core, just_energy_xc, lrigpw, my_print, rigpw, use_virial
       REAL(KIND=dp)                                      :: ecore_ppl, edisp, ee_ener, ekin_mol, &
-                                                            mulliken_order_p
+                                                            mulliken_order_p, vscale
       REAL(KIND=dp), DIMENSION(3, 3)                     :: h_stress, pv_loc
       TYPE(admm_type), POINTER                           :: admm_env
       TYPE(cdft_control_type), POINTER                   :: cdft_control
@@ -436,7 +436,8 @@ CONTAINS
 
       IF (gapw) THEN
          CALL get_qs_env(qs_env, ecoul_1c=ecoul_1c, local_rho_set=local_rho_set)
-         CALL Vh_1c_gg_integrals(qs_env, energy%hartree_1c, ecoul_1c, local_rho_set, para_env, tddft=.FALSE.)
+         CALL Vh_1c_gg_integrals(qs_env, energy%hartree_1c, ecoul_1c, local_rho_set, para_env, tddft=.FALSE., &
+                                 core_2nd=.FALSE.)
       END IF
 
       ! Check if CDFT constraint is needed
@@ -537,8 +538,12 @@ CONTAINS
          NULLIFY (rho_struct)
 
          IF (use_virial .AND. calculate_forces) THEN
-            virial%pv_exc = virial%pv_exc - virial%pv_xc
-            virial%pv_virial = virial%pv_virial - virial%pv_xc
+            vscale = 1.0_dp
+            !Note: ADMMS and ADMMP stress tensor only for closed-shell calculations
+            IF (admm_env%do_admms) vscale = admm_env%gsi(1)**(2.0_dp/3.0_dp)
+            IF (admm_env%do_admmp) vscale = admm_env%gsi(1)**2
+            virial%pv_exc = virial%pv_exc - vscale*virial%pv_xc
+            virial%pv_virial = virial%pv_virial - vscale*virial%pv_xc
             ! virial%pv_xc will be zeroed in the xc routines
          END IF
          xc_section => admm_env%xc_section_primary
@@ -772,7 +777,6 @@ CONTAINS
       IF (gapw .OR. gapw_xc) THEN
          ! Single atom contributions in the KS matrix ***
          CALL update_ks_atom(qs_env, ks_matrix, rho_ao, calculate_forces)
-
          IF (dft_control%do_admm) THEN
             !Single atom contribution to the AUX matrices
             !Note: also update ks_aux_fit matrix in case of rtp
@@ -852,10 +856,8 @@ CONTAINS
          ! update core energy for grid based local pseudopotential
          ecore_ppl = 0._dp
          DO ispin = 1, nspins
-            ecore_ppl = ecore_ppl + &
-                        SUM(vppl_rspace%cr3d*rho_r(ispin)%cr3d)*vppl_rspace%pw_grid%dvol
+            ecore_ppl = ecore_ppl + pw_integral_ab(vppl_rspace, rho_r(ispin))
          END DO
-         CALL para_env%sum(ecore_ppl)
          energy%core = energy%core + ecore_ppl
       END IF
 

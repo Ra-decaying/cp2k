@@ -1146,7 +1146,7 @@ CONTAINS
          IF (dft_control%qs_control%method_id /= do_method_gapw_xc) THEN
             CALL get_qs_env(qs_env=qs_env, local_rho_set=local_rho_set, natom=natom)
             !       *** Allocate and initialize the compensation density rho0 ***
-            CALL init_rho0(local_rho_set, qs_env, gapw_control, .FALSE.)
+            CALL init_rho0(local_rho_set, qs_env, gapw_control)
             !       *** Allocate and Initialize the local coulomb term ***
             CALL init_coulomb_local(qs_env%hartree_local, natom)
          END IF
@@ -1202,8 +1202,8 @@ CONTAINS
             CALL section_vals_val_get(se_section, "NEIGHBOR_LISTS%VERLET_SKIN", &
                                       r_val=verlet_skin)
             ALLOCATE (se_nonbond_env)
-            CALL fist_nonbond_env_create(se_nonbond_env, atomic_kind_set, &
-                                         do_nonbonded=.TRUE., verlet_skin=verlet_skin, ewald_rcut=ewald_rcut, &
+            CALL fist_nonbond_env_create(se_nonbond_env, atomic_kind_set, do_nonbonded=.TRUE., &
+                                         do_electrostatics=.TRUE., verlet_skin=verlet_skin, ewald_rcut=ewald_rcut, &
                                          ei_scale14=0.0_dp, vdw_scale14=0.0_dp, shift_cutoff=.FALSE.)
             ! Create and Setup NDDO multipole environment
             CALL nddo_mpole_setup(se_nddo_mpole, natom)

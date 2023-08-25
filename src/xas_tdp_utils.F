@@ -86,18 +86,19 @@ MODULE xas_tdp_utils
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'xas_tdp_utils'
 
-   PUBLIC :: setup_xas_tdp_prob, solve_xas_tdp_prob, include_rcs_soc, include_os_soc
+   PUBLIC :: setup_xas_tdp_prob, solve_xas_tdp_prob, include_rcs_soc, &
+             include_os_soc, rcs_amew_soc_elements
 
    !A helper type for SOC
    TYPE dbcsr_soc_package_type
-      TYPE(dbcsr_type), POINTER     :: dbcsr_sg
-      TYPE(dbcsr_type), POINTER     :: dbcsr_tp
-      TYPE(dbcsr_type), POINTER     :: dbcsr_sc
-      TYPE(dbcsr_type), POINTER     :: dbcsr_sf
-      TYPE(dbcsr_type), POINTER     :: dbcsr_prod
-      TYPE(dbcsr_type), POINTER     :: dbcsr_ovlp
-      TYPE(dbcsr_type), POINTER     :: dbcsr_tmp
-      TYPE(dbcsr_type), POINTER     :: dbcsr_work
+      TYPE(dbcsr_type), POINTER     :: dbcsr_sg => NULL()
+      TYPE(dbcsr_type), POINTER     :: dbcsr_tp => NULL()
+      TYPE(dbcsr_type), POINTER     :: dbcsr_sc => NULL()
+      TYPE(dbcsr_type), POINTER     :: dbcsr_sf => NULL()
+      TYPE(dbcsr_type), POINTER     :: dbcsr_prod => NULL()
+      TYPE(dbcsr_type), POINTER     :: dbcsr_ovlp => NULL()
+      TYPE(dbcsr_type), POINTER     :: dbcsr_tmp => NULL()
+      TYPE(dbcsr_type), POINTER     :: dbcsr_work => NULL()
    END TYPE dbcsr_soc_package_type
 
 CONTAINS
@@ -2961,7 +2962,9 @@ CONTAINS
       COMPLEX(dp), ALLOCATABLE, DIMENSION(:, :)          :: transdip
       INTEGER                                            :: handle, i, nosc, ntot
       LOGICAL                                            :: do_os, do_rcs
-      REAL(dp), DIMENSION(:), POINTER                    :: osc_str, soc_evals
+      REAL(dp), ALLOCATABLE, DIMENSION(:)                :: osc_xyz
+      REAL(dp), DIMENSION(:), POINTER                    :: soc_evals
+      REAL(dp), DIMENSION(:, :), POINTER                 :: osc_str
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       TYPE(cp_cfm_type)                                  :: dip_cfm, work1_cfm, work2_cfm
       TYPE(cp_fm_struct_type), POINTER                   :: dip_struct, full_struct
@@ -2980,9 +2983,9 @@ CONTAINS
       soc_evals => donor_state%soc_evals
       nosc = SIZE(soc_evals)
       ntot = nosc + 1 !because GS AMEW is in there
-      ALLOCATE (donor_state%soc_osc_str(nosc))
+      ALLOCATE (donor_state%soc_osc_str(nosc, 4))
       osc_str => donor_state%soc_osc_str
-      osc_str(:) = 0.0_dp
+      osc_str(:, :) = 0.0_dp
       IF (do_os .AND. .NOT. PRESENT(gs_coeffs)) CPABORT("Need to pass gs_coeffs for open-shell")
 
       !get some work arrays/matrix
@@ -3003,6 +3006,7 @@ CONTAINS
                               xas_tdp_control%eps_filter, qs_env)
       END IF
 
+      ALLOCATE (osc_xyz(nosc))
       DO i = 1, 3 !cartesian coord x, y, z
 
          !Convert the real dipole into the cfm format for calculations
@@ -3017,16 +3021,20 @@ CONTAINS
          CALL cp_cfm_get_submatrix(dip_cfm, transdip)
 
          !transition dipoles are real numbers
-         osc_str(:) = osc_str(:) + REAL(transdip(2:ntot, 1))**2 + AIMAG(transdip(2:ntot, 1))**2
+         osc_xyz(:) = REAL(transdip(2:ntot, 1))**2 + AIMAG(transdip(2:ntot, 1))**2
+         osc_str(:, 4) = osc_str(:, 4) + osc_xyz(:)
+         osc_str(:, i) = osc_xyz(:)
 
       END DO !i
 
       !multiply with appropriate prefac depending in the rep
-      IF (xas_tdp_control%dipole_form == xas_dip_len) THEN
-         osc_str(:) = 2.0_dp/3.0_dp*soc_evals(:)*osc_str(:)
-      ELSE
-         osc_str(:) = 2.0_dp/3.0_dp/soc_evals(:)*osc_str(:)
-      END IF
+      DO i = 1, 4
+         IF (xas_tdp_control%dipole_form == xas_dip_len) THEN
+            osc_str(:, i) = 2.0_dp/3.0_dp*soc_evals(:)*osc_str(:, i)
+         ELSE
+            osc_str(:, i) = 2.0_dp/3.0_dp/soc_evals(:)*osc_str(:, i)
+         END IF
+      END DO
 
       !clean-up
       CALL cp_fm_struct_release(dip_struct)

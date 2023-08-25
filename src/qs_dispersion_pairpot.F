@@ -10,6 +10,7 @@
 !> \author JGH
 ! **************************************************************************************************
 MODULE qs_dispersion_pairpot
+
    USE atomic_kind_types,               ONLY: atomic_kind_type,&
                                               get_atomic_kind,&
                                               get_atomic_kind_set
@@ -68,6 +69,7 @@ MODULE qs_dispersion_pairpot
                                               neighbor_list_iterator_p_type,&
                                               neighbor_list_iterator_release,&
                                               neighbor_list_set_p_type
+   USE string_utilities,                ONLY: uppercase
    USE virial_methods,                  ONLY: virial_pair_force
    USE virial_types,                    ONLY: virial_type
 
@@ -449,15 +451,16 @@ CONTAINS
 !> \param vdw_section ...
 ! **************************************************************************************************
    SUBROUTINE qs_scaling_dftd3(s6, sr6, s8, vdw_section)
+
       REAL(KIND=dp), INTENT(inout)                       :: s6, sr6, s8
       TYPE(section_vals_type), POINTER                   :: vdw_section
 
       CHARACTER(LEN=default_string_length)               :: functional
 
       CALL section_vals_val_get(vdw_section, "PAIR_POTENTIAL%REFERENCE_FUNCTIONAL", c_val=functional)
-
+      CALL uppercase(functional)
       ! values for different functionals from:
-      ! https://www.chemie.uni-bonn.de/pctc/mulliken-center/software/dft-d3/dft-d3
+      ! https://www.chemie.uni-bonn.de/grimme/de/software/dft-d3
       ! L. Goerigk et al. PCCP 2017, 32147-32744, SI
       SELECT CASE (TRIM(functional))
       CASE DEFAULT
@@ -527,7 +530,7 @@ CONTAINS
          s6 = 1.000_dp
          sr6 = 1.217_dp
          s8 = 0.722_dp
-      CASE ("PBEhPBE")
+      CASE ("PBEHPBE")
          s6 = 1.000_dp
          sr6 = 1.5703_dp
          s8 = 1.4010_dp
@@ -547,7 +550,7 @@ CONTAINS
          s6 = 1.000_dp
          sr6 = 1.660_dp
          s8 = 0.550_dp
-      CASE ("revPBE")
+      CASE ("REVPBE")
          ! S. Grimme, J. Antony, S. Ehrlich, and H. Krieg
          ! J. Chem. Phys. 132,154104 (2010); doi:10.1063/1.3382344
          s6 = 1.000_dp
@@ -569,7 +572,7 @@ CONTAINS
          s6 = 1.000_dp
          sr6 = 1.252_dp
          s8 = 1.242_dp
-      CASE ("TPSSh")
+      CASE ("TPSSH")
          s6 = 1.000_dp
          sr6 = 1.223_dp
          s8 = 1.219_dp
@@ -669,19 +672,19 @@ CONTAINS
          s6 = 1.000_dp
          sr6 = 1.333_dp
          s8 = 0.998_dp
-      CASE ("PBEh1PBE")
+      CASE ("PBEH1PBE")
          s6 = 1.000_dp
          sr6 = 1.3719_dp
          s8 = 1.0430_dp
-      CASE ("PBEsol")
+      CASE ("PBESOL")
          s6 = 1.000_dp
          sr6 = 1.345_dp
          s8 = 0.612_dp
-      CASE ("revSSB")
+      CASE ("REVSSB")
          s6 = 1.000_dp
          sr6 = 1.221_dp
          s8 = 0.560_dp
-      CASE ("revTPSS")
+      CASE ("REVTPSS")
          s6 = 1.000_dp
          sr6 = 1.3491_dp
          s8 = 1.3666_dp
@@ -725,7 +728,7 @@ CONTAINS
          s6 = 1.000_dp
          sr6 = 3.3388_dp
          s8 = 0.000_dp
-      CASE ("mPWPW91")
+      CASE ("MPWPW91")
          s6 = 1.0000_dp
          sr6 = 1.3725_dp
          s8 = 1.9467_dp
@@ -737,7 +740,7 @@ CONTAINS
          s6 = 1.000_dp
          sr6 = 1.7231_dp
          s8 = 2.2917_dp
-      CASE ("mPW1LYP")
+      CASE ("MPW1LYP")
          s6 = 1.000_dp
          sr6 = 2.0512_dp
          s8 = 1.9529_dp
@@ -765,19 +768,19 @@ CONTAINS
          s6 = 1.0000_dp
          sr6 = 2.1040_dp
          s8 = 0.8747_dp
-      CASE ("revPBE0")
+      CASE ("REVPBE0")
          s6 = 1.000_dp
          sr6 = 0.949_dp
          s8 = 0.792_dp
-      CASE ("revPBE38")
+      CASE ("REVPBE38")
          s6 = 1.000_dp
          sr6 = 1.021_dp
          s8 = 0.862_dp
-      CASE ("revTPSSh")
+      CASE ("REVTPSSh")
          s6 = 1.000_dp
          sr6 = 1.3224_dp
          s8 = 1.2504_dp
-      CASE ("revTPSS0")
+      CASE ("REVTPSS0")
          s6 = 1.000_dp
          sr6 = 1.2881_dp
          s8 = 1.0649_dp
@@ -785,11 +788,11 @@ CONTAINS
          s6 = 1.000_dp
          sr6 = 1.7729_dp
          s8 = 2.0902_dp
-      CASE ("tHCTHhyb")
+      CASE ("THCTHHYB")
          s6 = 1.000_dp
          sr6 = 1.5001_dp
          s8 = 1.6302_dp
-      CASE ("rPW86PBE")
+      CASE ("RPW86PBE")
          s6 = 1.000_dp
          sr6 = 1.224_dp
          s8 = 0.901_dp
@@ -797,7 +800,7 @@ CONTAINS
          s6 = 1.000_dp
          sr6 = 1.324_dp
          s8 = 0.000_dp
-      CASE ("tHCTH")
+      CASE ("THCTH")
          s6 = 1.000_dp
          sr6 = 0.932_dp
          s8 = 0.5662_dp
@@ -1236,13 +1239,15 @@ CONTAINS
 !> \param dispersion_env ...
 !> \param energy ...
 !> \param calculate_forces ...
+!> \param atevdw ...
 ! **************************************************************************************************
-   SUBROUTINE calculate_dispersion_pairpot(qs_env, dispersion_env, energy, calculate_forces)
+   SUBROUTINE calculate_dispersion_pairpot(qs_env, dispersion_env, energy, calculate_forces, atevdw)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(qs_dispersion_type), POINTER                  :: dispersion_env
       REAL(KIND=dp), INTENT(OUT)                         :: energy
       LOGICAL, INTENT(IN)                                :: calculate_forces
+      REAL(KIND=dp), DIMENSION(:), OPTIONAL              :: atevdw
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'calculate_dispersion_pairpot'
 
@@ -1252,8 +1257,8 @@ CONTAINS
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: atom_of_kind, atomnumber, kind_of
       INTEGER, DIMENSION(3)                              :: cell_b, cell_c, ncell, periodic
       INTEGER, DIMENSION(:), POINTER                     :: atom_list
-      LOGICAL :: atenergy, atstress, debug, debugall, debugx, domol, exclude_pair, floating_a, &
-         floating_b, floating_c, ghost_a, ghost_b, ghost_c, is000, use_virial
+      LOGICAL :: atenergy, atex, atstress, debug, debugall, debugx, domol, exclude_pair, &
+         floating_a, floating_b, floating_c, ghost_a, ghost_b, ghost_c, is000, use_virial
       LOGICAL, ALLOCATABLE, DIMENSION(:)                 :: dodisp, floating, ghost
       REAL(KIND=dp) :: a1, a2, alp6, alp8, ang, c6, c8, c9, cc6ab, cc6bc, cc6ca, cnum, dc6a, dc6b, &
          dc8a, dc8b, dcc6aba, dcc6abb, dcc6bcb, dcc6bcc, dcc6caa, dcc6cac, dd, de6, de8, de91, &
@@ -1326,6 +1331,11 @@ CONTAINS
       END IF
       atstress = atprop%stress
       atstr => atprop%atstress
+      ! external atomic energy
+      atex = .FALSE.
+      IF (PRESENT(atevdw)) THEN
+         atex = .TRUE.
+      END IF
 
       IF (unit_nr > 0) THEN
          WRITE (unit_nr, *)
@@ -1598,6 +1608,10 @@ CONTAINS
                   atener(iatom) = atener(iatom) - 0.5_dp*xp*fdmp*fac
                   atener(jatom) = atener(jatom) - 0.5_dp*xp*fdmp*fac
                END IF
+               IF (atex) THEN
+                  atevdw(iatom) = atevdw(iatom) - 0.5_dp*xp*fdmp*fac
+                  atevdw(jatom) = atevdw(jatom) - 0.5_dp*xp*fdmp*fac
+               END IF
             ELSE IF (disp_a%type == dftd3_pp .AND. dr > 0.001_dp) THEN
                IF (dispersion_env%nd3_exclude_pair > 0) THEN
                   CALL exclude_d3_kind_pair(dispersion_env%d3_exclude_pair, ikind, jkind, exclude=exclude_pair)
@@ -1648,6 +1662,10 @@ CONTAINS
                IF (atenergy) THEN
                   atener(iatom) = atener(iatom) - 0.5_dp*(e6 + e8 + srbe)
                   atener(jatom) = atener(jatom) - 0.5_dp*(e6 + e8 + srbe)
+               END IF
+               IF (atex) THEN
+                  atevdw(iatom) = atevdw(iatom) - 0.5_dp*(e6 + e8 + srbe)
+                  atevdw(jatom) = atevdw(jatom) - 0.5_dp*(e6 + e8 + srbe)
                END IF
                IF (calculate_forces) THEN
                   ! damping
@@ -1823,6 +1841,11 @@ CONTAINS
                                     atener(iatom) = atener(iatom) - e9/3._dp
                                     atener(jatom) = atener(jatom) - e9/3._dp
                                     atener(katom) = atener(katom) - e9/3._dp
+                                 END IF
+                                 IF (atex) THEN
+                                    atevdw(iatom) = atevdw(iatom) - e9/3._dp
+                                    atevdw(jatom) = atevdw(jatom) - e9/3._dp
+                                    atevdw(katom) = atevdw(katom) - e9/3._dp
                                  END IF
 
                                  IF (calculate_forces) THEN

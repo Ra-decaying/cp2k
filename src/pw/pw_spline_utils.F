@@ -16,6 +16,7 @@
 !> \author Fawzi Mohamed
 ! **************************************************************************************************
 MODULE pw_spline_utils
+
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
                                               cp_logger_type,&
                                               cp_to_string
@@ -110,11 +111,11 @@ MODULE pw_spline_utils
 !> \author fawzi
 ! **************************************************************************************************
    TYPE pw_spline_precond_type
-      INTEGER :: kind
-      REAL(kind=dp), DIMENSION(4) :: coeffs
-      REAL(kind=dp), DIMENSION(3) :: coeffs_1d
-      LOGICAL :: sharpen, normalize, pbc, transpose
-      TYPE(pw_pool_type), POINTER :: pool
+      INTEGER :: kind = no_precond
+      REAL(kind=dp), DIMENSION(4) :: coeffs = 0.0_dp
+      REAL(kind=dp), DIMENSION(3) :: coeffs_1d = 0.0_dp
+      LOGICAL :: sharpen = .FALSE., normalize = .FALSE., pbc = .FALSE., transpose = .FALSE.
+      TYPE(pw_pool_type), POINTER :: pool => NULL()
    END TYPE pw_spline_precond_type
 
 CONTAINS
@@ -2663,12 +2664,14 @@ CONTAINS
 ! **************************************************************************************************
    FUNCTION find_coeffs(values, coeffs, linOp, preconditioner, pool, &
                         eps_r, eps_x, max_iter, sumtype) RESULT(res)
-      TYPE(pw_type), INTENT(IN)                          :: values, coeffs
+
+      TYPE(pw_type), INTENT(IN)                          :: values
+      TYPE(pw_type), INTENT(INOUT)                       :: coeffs
       INTERFACE
-! **************************************************************************************************
          SUBROUTINE linOp(pw_in, pw_out)
             USE pw_types, ONLY: pw_type
-            TYPE(pw_type), INTENT(IN) :: pw_in, pw_out
+            TYPE(pw_type), INTENT(IN)    :: pw_in
+            TYPE(pw_type), INTENT(INOUT) :: pw_out
          END SUBROUTINE linOp
       END INTERFACE
       TYPE(pw_spline_precond_type), INTENT(IN)           :: preconditioner
@@ -2751,6 +2754,7 @@ CONTAINS
       CALL pw_pool_give_back_pw(pool, z)
       CALL pw_pool_give_back_pw(pool, p)
       CALL pw_pool_give_back_pw(pool, Ap)
+
    END FUNCTION find_coeffs
 
 ! **************************************************************************************************
@@ -3108,11 +3112,14 @@ CONTAINS
 !> \param pw_out ...
 ! **************************************************************************************************
    SUBROUTINE spl3_nopbc(pw_in, pw_out)
-      TYPE(pw_type), INTENT(IN)                          :: pw_in, pw_out
+
+      TYPE(pw_type), INTENT(IN)                          :: pw_in
+      TYPE(pw_type), INTENT(INOUT)                       :: pw_out
 
       CALL pw_zero(pw_out)
       CALL pw_nn_compose_r_no_pbc(weights_1d=spl3_1d_coeffs0, pw_in=pw_in, &
                                   pw_out=pw_out, sharpen=.FALSE., normalize=.FALSE.)
+
    END SUBROUTINE spl3_nopbc
 
 ! **************************************************************************************************
@@ -3121,11 +3128,14 @@ CONTAINS
 !> \param pw_out ...
 ! **************************************************************************************************
    SUBROUTINE spl3_nopbct(pw_in, pw_out)
-      TYPE(pw_type), INTENT(IN)                          :: pw_in, pw_out
+
+      TYPE(pw_type), INTENT(IN)                          :: pw_in
+      TYPE(pw_type), INTENT(INOUT)                       :: pw_out
 
       CALL pw_zero(pw_out)
       CALL pw_nn_compose_r_no_pbc(weights_1d=spl3_1d_coeffs0, pw_in=pw_in, &
                                   pw_out=pw_out, sharpen=.FALSE., normalize=.FALSE., transpose=.TRUE.)
+
    END SUBROUTINE spl3_nopbct
 
 ! **************************************************************************************************
@@ -3134,10 +3144,13 @@ CONTAINS
 !> \param pw_out ...
 ! **************************************************************************************************
    SUBROUTINE spl3_pbc(pw_in, pw_out)
-      TYPE(pw_type), INTENT(IN)                          :: pw_in, pw_out
+
+      TYPE(pw_type), INTENT(IN)                          :: pw_in
+      TYPE(pw_type), INTENT(INOUT)                       :: pw_out
 
       CALL pw_zero(pw_out)
       CALL pw_nn_smear_r(pw_in, pw_out, coeffs=spline3_coeffs)
+
    END SUBROUTINE spl3_pbc
 
 ! **************************************************************************************************

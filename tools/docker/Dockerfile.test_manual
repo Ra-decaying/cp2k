@@ -80,7 +80,7 @@ COPY ./tests ./tests
 COPY ./tools/regtesting ./tools/regtesting
 
 # Generate manual.
-COPY ./tools/manual ./tools/manual
+COPY ./docs ./docs
 COPY ./tools/input_editing ./tools/input_editing
 COPY ./tools/docker/scripts/test_manual.sh .
 ARG ADD_EDIT_LINKS=yes

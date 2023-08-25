@@ -71,6 +71,7 @@ MODULE force_env_methods
         use_eip_force, use_embed, use_fist_force, use_mixed_force, use_nnp_force, use_prog_name, &
         use_pwdft_force, use_qmmm, use_qmmmx, use_qs_force
    USE force_env_utils,                 ONLY: rescale_forces,&
+                                              write_atener,&
                                               write_forces
    USE force_fields_util,               ONLY: get_generic_info
    USE fp_methods,                      ONLY: fp_eval
@@ -144,7 +145,8 @@ MODULE force_env_methods
    USE physcon,                         ONLY: debye
    USE pw_env_types,                    ONLY: pw_env_get,&
                                               pw_env_type
-   USE pw_methods,                      ONLY: pw_copy,&
+   USE pw_methods,                      ONLY: pw_axpy,&
+                                              pw_copy,&
                                               pw_integral_ab,&
                                               pw_zero
    USE pw_pool_types,                   ONLY: pw_pool_create_pw,&
@@ -431,10 +433,9 @@ CONTAINS
          CALL force_env%para_env%sum(atprop_env%atener)
          CALL force_env_get(force_env, potential_energy=e_pot)
          IF (output_unit > 0) THEN
-            IF (logger%iter_info%print_level > low_print_level) THEN
-               WRITE (UNIT=output_unit, FMT="(/,T6,A,T15,A)") "Atom", "Potential energy"
-               WRITE (UNIT=output_unit, FMT="(T2,I8,1X,F20.10)") &
-                  (i, atprop_env%atener(i), i=1, SIZE(atprop_env%atener))
+            IF (logger%iter_info%print_level >= low_print_level) THEN
+               CALL cp_subsys_get(subsys=subsys, particles=particles)
+               CALL write_atener(output_unit, particles, atprop_env%atener, "Mulliken Atomic Energies")
             END IF
             sum_energy = accurate_sum(atprop_env%atener(:))
             checksum = ABS(e_pot - sum_energy)
@@ -1705,12 +1706,12 @@ CONTAINS
 
       ! Check the preliminary density differences
       DO i_spin = 1, nspins
-         diff_rho_r%cr3d(:, :, :) = diff_rho_r%cr3d(:, :, :) - rho_r_ref(i_spin)%cr3d(:, :, :)
+         CALL pw_axpy(rho_r_ref(i_spin), diff_rho_r, -1.0_dp)
       END DO
       IF (opt_embed%open_shell_embed) THEN ! Spin part
          IF (nspins .EQ. 2) THEN ! Reference systems has an open shell, else the reference diff_rho_spin is zero
-            diff_rho_spin%cr3d(:, :, :) = diff_rho_spin%cr3d(:, :, :) - rho_r_ref(1)%cr3d(:, :, :) &
-                                          + rho_r_ref(2)%cr3d(:, :, :)
+            CALL pw_axpy(rho_r_ref(1), diff_rho_spin, -1.0_dp)
+            CALL pw_axpy(rho_r_ref(2), diff_rho_spin, 1.0_dp)
          END IF
       END IF
 
@@ -1722,18 +1723,18 @@ CONTAINS
          ! Add subsystem densities
          CALL qs_rho_get(rho_struct=subsys_rho, rho_r=rho_r_subsys)
          DO i_spin = 1, nspins_subsys
-            diff_rho_r%cr3d(:, :, :) = diff_rho_r%cr3d(:, :, :) + rho_r_subsys(i_spin)%cr3d(:, :, :)
+            CALL pw_axpy(rho_r_subsys(i_spin), diff_rho_r, allow_noncompatible_grids=.TRUE.)
          END DO
          IF (opt_embed%open_shell_embed) THEN ! Spin part
             IF (nspins_subsys .EQ. 2) THEN ! The subsystem makes contribution if it is spin-polarized
                ! We may need to change spin ONLY FOR THE SECOND SUBSYSTEM: that's the internal convention
                IF ((i_force_eval .EQ. 2) .AND. (opt_embed%change_spin)) THEN
-                  diff_rho_spin%cr3d(:, :, :) = diff_rho_spin%cr3d(:, :, :) - &
-                                                rho_r_subsys(1)%cr3d(:, :, :) + rho_r_subsys(2)%cr3d(:, :, :)
+                  CALL pw_axpy(rho_r_subsys(1), diff_rho_spin, -1.0_dp, allow_noncompatible_grids=.TRUE.)
+                  CALL pw_axpy(rho_r_subsys(2), diff_rho_spin, 1.0_dp, allow_noncompatible_grids=.TRUE.)
                ELSE
                   ! First subsystem (always) and second subsystem (without spin change)
-                  diff_rho_spin%cr3d(:, :, :) = diff_rho_spin%cr3d(:, :, :) + &
-                                                rho_r_subsys(1)%cr3d(:, :, :) - rho_r_subsys(2)%cr3d(:, :, :)
+                  CALL pw_axpy(rho_r_subsys(1), diff_rho_spin, 1.0_dp, allow_noncompatible_grids=.TRUE.)
+                  CALL pw_axpy(rho_r_subsys(2), diff_rho_spin, -1.0_dp, allow_noncompatible_grids=.TRUE.)
                END IF
             END IF
          END IF
@@ -1766,17 +1767,17 @@ CONTAINS
                                   force_env%sub_force_env(i_force_eval)%force_env%qs_env, nforce_eval, i_force_eval, opt_embed%eta)
             END IF
          END DO
-         embed_pot%cr3d(:, :, :) = embed_pot%cr3d(:, :, :) + opt_embed%pot_diff%cr3d(:, :, :)
+         CALL pw_axpy(opt_embed%pot_diff, embed_pot)
          IF (.NOT. opt_embed%grid_opt) CALL pw_copy(embed_pot, opt_embed%const_pot)
 
       END IF
 
       ! Difference guess
       IF (opt_embed%diff_guess) THEN
-         embed_pot%cr3d(:, :, :) = diff_rho_r%cr3d(:, :, :)
+         CALL pw_copy(diff_rho_r, embed_pot)
          IF (.NOT. opt_embed%grid_opt) CALL pw_copy(embed_pot, opt_embed%const_pot)
          ! Open shell
-         IF (opt_embed%open_shell_embed) spin_embed_pot%cr3d(:, :, :) = diff_rho_spin%cr3d(:, :, :)
+         IF (opt_embed%open_shell_embed) CALL pw_copy(diff_rho_spin, spin_embed_pot)
       END IF
 
       ! Calculate subsystems with trial embedding potential
@@ -1788,13 +1789,13 @@ CONTAINS
          CALL get_qs_env(force_env%sub_force_env(ref_subsys_number)%force_env%qs_env, dft_control=dft_control)
          nspins = dft_control%nspins
          DO i_spin = 1, nspins
-            diff_rho_r%cr3d(:, :, :) = diff_rho_r%cr3d(:, :, :) - rho_r_ref(i_spin)%cr3d(:, :, :)
+            CALL pw_axpy(rho_r_ref(i_spin), diff_rho_r, -1.0_dp)
          END DO
          IF (opt_embed%open_shell_embed) THEN ! Spin part
             CALL pw_zero(diff_rho_spin)
             IF (nspins .EQ. 2) THEN ! Reference systems has an open shell, else the reference diff_rho_spin is zero
-               diff_rho_spin%cr3d(:, :, :) = diff_rho_spin%cr3d(:, :, :) - rho_r_ref(1)%cr3d(:, :, :) &
-                                             + rho_r_ref(2)%cr3d(:, :, :)
+               CALL pw_axpy(rho_r_ref(1), diff_rho_spin, -1.0_dp)
+               CALL pw_axpy(rho_r_ref(2), diff_rho_spin, 1.0_dp)
             END IF
          END IF
 
@@ -1814,11 +1815,6 @@ CONTAINS
                                           embed_pot, embed_pot_subsys, spin_embed_pot, spin_embed_pot_subsys, &
                                           opt_embed%open_shell_embed, .FALSE.)
             END IF
-
-            ! Subtract Coulomb potential difference if needed
-            !  IF ((i_force_eval .EQ. 2) .AND. (opt_embed%Coulomb_guess)) THEN
-            !     embed_pot_subsys%cr3d(:, :, :) = embed_pot_subsys%cr3d(:, :, :)-opt_embed%pot_diff%cr3d(:, :, :)
-            !  ENDIF
 
             ! Switch on external potential in the subsystems
             dft_control%apply_embed_pot = .TRUE.
@@ -1856,18 +1852,18 @@ CONTAINS
             ! Add subsystem densities
             CALL qs_rho_get(rho_struct=subsys_rho, rho_r=rho_r_subsys)
             DO i_spin = 1, nspins_subsys
-               diff_rho_r%cr3d(:, :, :) = diff_rho_r%cr3d(:, :, :) + rho_r_subsys(i_spin)%cr3d(:, :, :)
+               CALL pw_axpy(rho_r_subsys(i_spin), diff_rho_r, allow_noncompatible_grids=.TRUE.)
             END DO
             IF (opt_embed%open_shell_embed) THEN ! Spin part
                IF (nspins_subsys .EQ. 2) THEN ! The subsystem makes contribution if it is spin-polarized
                   ! We may need to change spin ONLY FOR THE SECOND SUBSYSTEM: that's the internal convention
                   IF ((i_force_eval .EQ. 2) .AND. (opt_embed%change_spin)) THEN
-                     diff_rho_spin%cr3d(:, :, :) = diff_rho_spin%cr3d(:, :, :) - &
-                                                   rho_r_subsys(1)%cr3d(:, :, :) + rho_r_subsys(2)%cr3d(:, :, :)
+                     CALL pw_axpy(rho_r_subsys(1), diff_rho_spin, -1.0_dp, allow_noncompatible_grids=.TRUE.)
+                     CALL pw_axpy(rho_r_subsys(2), diff_rho_spin, 1.0_dp, allow_noncompatible_grids=.TRUE.)
                   ELSE
                      ! First subsystem (always) and second subsystem (without spin change)
-                     diff_rho_spin%cr3d(:, :, :) = diff_rho_spin%cr3d(:, :, :) + &
-                                                   rho_r_subsys(1)%cr3d(:, :, :) - rho_r_subsys(2)%cr3d(:, :, :)
+                     CALL pw_axpy(rho_r_subsys(1), diff_rho_spin, 1.0_dp, allow_noncompatible_grids=.TRUE.)
+                     CALL pw_axpy(rho_r_subsys(2), diff_rho_spin, -1.0_dp, allow_noncompatible_grids=.TRUE.)
                   END IF
                END IF
             END IF
@@ -1966,7 +1962,7 @@ CONTAINS
                                     opt_embed%open_shell_embed, opt_embed%change_spin)
 
          IF (opt_embed%Coulomb_guess) THEN
-            embed_pot_subsys%cr3d(:, :, :) = embed_pot_subsys%cr3d(:, :, :) - opt_embed%pot_diff%cr3d(:, :, :)
+            CALL pw_axpy(opt_embed%pot_diff, embed_pot_subsys, -1.0_dp, allow_noncompatible_grids=.TRUE.)
          END IF
 
          CALL set_qs_env(force_env%sub_force_env(ref_subsys_number + 1)%force_env%qs_env, embed_pot=embed_pot_subsys)

@@ -895,9 +895,6 @@ MODULE input_constants
                                                broy_mix_new = 5, &
                                                multisec_mix = 6
 
-   ! Diagonalization library
-   INTEGER, PARAMETER, PUBLIC               :: do_diag_elpa = 1, &
-                                               do_diag_scalapack = 2
    ! FFT library
    ! these might need sync with fft_lib.F
    INTEGER, PARAMETER, PUBLIC               :: do_fft_sg = 1, &
@@ -1068,7 +1065,10 @@ MODULE input_constants
                                                kp_weights_W_uniform = 12, &
                                                kp_weights_W_tailored = 13, &
                                                gw_gf_mic = 14, &
-                                               gw_gf_gamma = 15
+                                               gw_gf_gamma = 15, &
+                                               soc_none = 16, &
+                                               soc_lda = 17, &
+                                               soc_pbe = 18
 
    ! periodic RESP parameters
    INTEGER, PARAMETER, PUBLIC               :: do_resp_x_dir = 0, &
@@ -1097,10 +1097,14 @@ MODULE input_constants
                                                do_lri_opt_coeff = 1, &
                                                do_lri_opt_exps = 2
 
-   ! Active smape model parameters
+   ! Active space model parameters
    INTEGER, PARAMETER, PUBLIC               :: hf_model = 100, &
                                                rsdft_model = 101, &
                                                dmft_model = 102
+
+   ! Active space external solvers
+   INTEGER, PARAMETER, PUBLIC               :: no_solver = 200, &
+                                               qiskit_solver = 201
 
    ! callgraph parameters
    INTEGER, PARAMETER, PUBLIC               :: callgraph_none = 0, &

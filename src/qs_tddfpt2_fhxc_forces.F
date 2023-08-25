@@ -11,7 +11,6 @@ MODULE qs_tddfpt2_fhxc_forces
                                               get_admm_env
    USE atomic_kind_types,               ONLY: atomic_kind_type,&
                                               get_atomic_kind_set
-   USE atprop_types,                    ONLY: atprop_type
    USE cell_types,                      ONLY: cell_type,&
                                               pbc
    USE cp_control_types,                ONLY: dft_control_type,&
@@ -175,7 +174,8 @@ CONTAINS
                                                             norb, nspins
       LOGICAL :: distribute_fock_matrix, do_admm, do_analytic, do_hfx, do_numeric, gapw, gapw_xc, &
          hfx_treat_lsd_in_core, is_rks_triplets, s_mstruct_changed, use_virial
-      REAL(KIND=dp)                                      :: eh1, eh1c, eps_fit, focc, fval, xehartree
+      REAL(KIND=dp)                                      :: eh1, eh1c, eps_fit, focc, fval, kval, &
+                                                            xehartree
       REAL(KIND=dp), DIMENSION(3)                        :: fodeb
       TYPE(admm_type), POINTER                           :: admm_env
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
@@ -265,6 +265,11 @@ CONTAINS
       !
       NULLIFY (hartree_local, local_rho_set, local_rho_set_admm)
       IF (gapw .OR. gapw_xc) THEN
+         IF (nspins == 2) THEN
+            DO ispin = 1, nspins
+               CALL dbcsr_scale(matrix_px1(ispin)%matrix, 2.0_dp)
+            END DO
+         END IF
          CALL get_qs_env(qs_env, &
                          atomic_kind_set=atomic_kind_set, &
                          qs_kind_set=qs_kind_set)
@@ -273,7 +278,8 @@ CONTAINS
                                           qs_kind_set, dft_control, para_env)
          IF (gapw) THEN
             CALL get_qs_env(qs_env, natom=natom)
-            CALL init_rho0(local_rho_set, qs_env, dft_control%qs_control%gapw_control, .TRUE.)
+            CALL init_rho0(local_rho_set, qs_env, dft_control%qs_control%gapw_control, &
+                           zcore=0.0_dp)
             CALL rho0_s_grid_create(pw_env, local_rho_set%rho0_mpole)
             CALL hartree_local_create(hartree_local)
             CALL init_coulomb_local(hartree_local, natom)
@@ -306,6 +312,11 @@ CONTAINS
          CALL calculate_rho_atom_coeff(qs_env, mpga, local_rho_set_g%rho_atom_set, &
                                        qs_kind_set, oce, sab, para_env)
          CALL prepare_gapw_den(qs_env, local_rho_set_g, do_rho0=.FALSE.)
+         IF (nspins == 2) THEN
+            DO ispin = 1, nspins
+               CALL dbcsr_scale(matrix_px1(ispin)%matrix, 0.5_dp)
+            END DO
+         END IF
       END IF
       !
       IF (do_admm) THEN
@@ -425,17 +436,23 @@ CONTAINS
          END IF
          IF (gapw) THEN
             IF (debug_forces) fodeb(1:3) = force(1)%g0s_Vh_elec(1:3, 1)
-            CALL Vh_1c_gg_integrals(qs_env, eh1c, hartree_local%ecoul_1c, local_rho_set, para_env, tddft=.TRUE.)
+            CALL Vh_1c_gg_integrals(qs_env, eh1c, hartree_local%ecoul_1c, local_rho_set, para_env, tddft=.TRUE., &
+                                    core_2nd=.TRUE.)
+            IF (nspins == 1) THEN
+               kval = 1.0_dp
+            ELSE
+               kval = 0.5_dp
+            END IF
             CALL integrate_vhg0_rspace(qs_env, xv_hartree_rspace, para_env, calculate_forces=.TRUE., &
-                                       local_rho_set=local_rho_set)
+                                       local_rho_set=local_rho_set, kforce=kval)
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%g0s_Vh_elec(1:3, 1) - fodeb(1:3)
                CALL para_env%sum(fodeb)
                IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Px*dKh[X]PAWg0", fodeb
             END IF
             IF (debug_forces) fodeb(1:3) = force(1)%Vhxc_atom(1:3, 1)
-            CALL update_ks_atom(qs_env, matrix_hx, matrix_px1, forces=.TRUE., tddft=.TRUE., &
-                                rho_atom_external=local_rho_set%rho_atom_set, kscale=0.5_dp)
+            CALL update_ks_atom(qs_env, matrix_hx, matrix_px1, forces=.TRUE., &
+                                rho_atom_external=local_rho_set%rho_atom_set)
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%Vhxc_atom(1:3, 1) - fodeb(1:3)
                CALL para_env%sum(fodeb)
@@ -552,16 +569,23 @@ CONTAINS
          IF (gapw .OR. gapw_xc) THEN
             IF (debug_forces) fodeb(1:3) = force(1)%Vhxc_atom(1:3, 1)
             CALL update_ks_atom(qs_env, matrix_fx, matrix_px1, forces=.TRUE., tddft=.TRUE., &
-                                rho_atom_external=local_rho_set_f%rho_atom_set, kscale=0.5_dp)
+                                rho_atom_external=local_rho_set_f%rho_atom_set, &
+                                kintegral=1.0_dp, kforce=0.5_dp)
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%Vhxc_atom(1:3, 1) - fodeb(1:3)
                CALL para_env%sum(fodeb)
                IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Px*dKf[X]PAW ", fodeb
             END IF
             IF (debug_forces) fodeb(1:3) = force(1)%Vhxc_atom(1:3, 1)
-            CALL update_ks_atom(qs_env, matrix_gx, matrix_p, forces=.TRUE., tddft=.TRUE., &
-                                rho_atom_external=local_rho_set_g%rho_atom_set, &
-                                kscale=0.5_dp)
+            IF (nspins == 1) THEN
+               CALL update_ks_atom(qs_env, matrix_gx, matrix_p, forces=.TRUE., tddft=.TRUE., &
+                                   rho_atom_external=local_rho_set_g%rho_atom_set, &
+                                   kscale=0.5_dp)
+            ELSE
+               CALL update_ks_atom(qs_env, matrix_gx, matrix_p, forces=.TRUE., &
+                                   rho_atom_external=local_rho_set_g%rho_atom_set, &
+                                   kintegral=0.5_dp, kforce=0.25_dp)
+            END IF
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%Vhxc_atom(1:3, 1) - fodeb(1:3)
                CALL para_env%sum(fodeb)
@@ -1143,7 +1167,6 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(3)                        :: fij, fodeb, rij
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: gab, pblock
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
-      TYPE(atprop_type), POINTER                         :: atprop
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_fm_struct_type), POINTER                   :: fmstruct, fmstruct_mat, fmstructjspin
       TYPE(cp_fm_type)                                   :: cvcmat, cvec, cvecjspin, t0matrix, &
@@ -1308,12 +1331,12 @@ CONTAINS
                ewald_env => work%ewald_env
                ewald_pw => work%ewald_pw
                CALL ewald_env_get(ewald_env, alpha=alpha, ewald_type=ewald_type)
-               CALL get_qs_env(qs_env=qs_env, sab_orb=n_list, virial=virial, atprop=atprop)
+               CALL get_qs_env(qs_env=qs_env, sab_orb=n_list, virial=virial)
                use_virial = .FALSE.
                calculate_forces = .FALSE.
-               CALL tb_ewald_overlap(gtcharge, tcharge, alpha, n_list, virial, use_virial, atprop)
+               CALL tb_ewald_overlap(gtcharge, tcharge, alpha, n_list, virial, use_virial)
                CALL tb_spme_evaluate(ewald_env, ewald_pw, particle_set, cell, &
-                                     gtcharge, tcharge, calculate_forces, virial, use_virial, atprop)
+                                     gtcharge, tcharge, calculate_forces, virial, use_virial)
                ! add self charge interaction contribution
                IF (para_env%is_source()) THEN
                   gtcharge(:, 1) = gtcharge(:, 1) - 2._dp*alpha*oorootpi*tcharge(:)

@@ -61,10 +61,9 @@ MODULE qs_integrate_potential_single
    USE qs_kind_types,                   ONLY: get_qs_kind,&
                                               qs_kind_type
    USE realspace_grid_types,            ONLY: map_gaussian_here,&
-                                              pw2rs,&
                                               realspace_grid_type,&
                                               rs_grid_zero,&
-                                              rs_pw_transfer
+                                              transfer_pw2rs
    USE rs_pw_interface,                 ONLY: potential_pw2rs
    USE virial_types,                    ONLY: virial_type
 #include "./base/base_uses.f90"
@@ -127,7 +126,7 @@ CONTAINS
       CALL get_qs_env(qs_env=qs_env, pw_env=pw_env)
       CALL pw_env_get(pw_env=pw_env, auxbas_rs_grid=rs_v)
 
-      CALL rs_pw_transfer(rs_v, rho_rspace, pw2rs)
+      CALL transfer_pw2rs(rs_v, rho_rspace)
 
       CALL get_qs_env(qs_env=qs_env, &
                       atomic_kind_set=atomic_kind_set, &
@@ -313,7 +312,7 @@ CONTAINS
       CALL get_qs_env(qs_env=qs_env, pw_env=pw_env)
       CALL pw_env_get(pw_env=pw_env, auxbas_rs_grid=rs_v)
 
-      CALL rs_pw_transfer(rs_v, rho_rspace, pw2rs)
+      CALL transfer_pw2rs(rs_v, rho_rspace)
 
       CALL get_qs_env(qs_env=qs_env, &
                       atomic_kind_set=atomic_kind_set, &
@@ -477,10 +476,12 @@ CONTAINS
 !>      grid
 !> \param v_rspace ...
 !> \param qs_env ...
+!> \param atecc ...
 ! **************************************************************************************************
-   SUBROUTINE integrate_v_core_rspace(v_rspace, qs_env)
+   SUBROUTINE integrate_v_core_rspace(v_rspace, qs_env, atecc)
       TYPE(pw_type), INTENT(IN)                          :: v_rspace
       TYPE(qs_environment_type), POINTER                 :: qs_env
+      REAL(KIND=dp), DIMENSION(:), OPTIONAL              :: atecc
 
       CHARACTER(len=*), PARAMETER :: routineN = 'integrate_v_core_rspace'
 
@@ -524,7 +525,7 @@ CONTAINS
          CALL get_qs_env(qs_env=qs_env, pw_env=pw_env)
          CALL pw_env_get(pw_env=pw_env, auxbas_rs_grid=rs_v)
 
-         CALL rs_pw_transfer(rs_v, v_rspace, pw2rs)
+         CALL transfer_pw2rs(rs_v, v_rspace)
 
          CALL get_qs_env(qs_env=qs_env, &
                          atomic_kind_set=atomic_kind_set, &
@@ -538,8 +539,8 @@ CONTAINS
                          atprop=atprop)
 
          ! atomic energy contributions
+         natom = SIZE(particle_set)
          IF (ASSOCIATED(atprop)) THEN
-            natom = SIZE(particle_set)
             CALL atprop_array_init(atprop%ateb, natom)
          END IF
 
@@ -614,6 +615,9 @@ CONTAINS
                END IF
                IF (ASSOCIATED(atprop)) THEN
                   atprop%ateb(atom_a) = atprop%ateb(atom_a) + 0.5_dp*hab(1, 1)*pab(1, 1)
+               END IF
+               IF (PRESENT(atecc)) THEN
+                  atecc(atom_a) = atecc(atom_a) + 0.5_dp*hab(1, 1)*pab(1, 1)
                END IF
 
             END DO

@@ -64,6 +64,9 @@ QS/regtest-cdft-hirshfeld
 SIRIUS/regtest-1                                            sirius
 QS/regtest-embed                                            libint
 QS/regtest-pod
+QS/regtest-tddfpt                                           libint
+QS/regtest-tddfpt-force-gapw                                libint
+QS/regtest-tddfpt-gapw                                      libint
 QS/regtest-tddfpt-admm                                      libint
 QS/regtest-debug-1
 QS/regtest-debug-2                                          libint
@@ -97,6 +100,7 @@ QS/regtest-pao-2
 QS/regtest-tddfpt-2                                         libint
 QS/regtest-tddfpt-3                                         libint
 QS/regtest-tddfpt-4                                         libint
+QS/regtest-tddfpt-soc                                       libint
 QS/regtest-stda                                             libint
 QS/regtest-p-efield
 QS/regtest-mp2-stress                                       libint
@@ -111,6 +115,7 @@ QS/regtest-hfx                                              libint
 QS/regtest-rel
 QS/regtest-ls-rtp
 QS/regtest-admm-qps                                         libint
+QS/regtest-admm-qps-2                                       libint
 ATOM/regtest-pseudo
 Fist/regtest-7-1
 QMMM/SE/regtest-force-mixing
@@ -134,6 +139,7 @@ QS/regtest-libxc                                            libxc libint
 SE/regtest-3-2
 QS/regtest-gw-cubic                                         libint
 QS/regtest-gw-kpoints                                       libint
+QS/regtest-scalable-gw                                       libint
 QS/regtest-xc
 QS/regtest-almo-2
 SE/regtest-2-2
@@ -215,7 +221,6 @@ QS/regtest-nmr-5
 QS/regtest-hole-funct
 QS/regtest-sccs-1
 QS/regtest-bs
-QS/regtest-tddfpt                                           libint
 QMMM/QS/regtest-3
 QS/regtest-sccs-3
 ATOM/regtest-1
@@ -262,6 +267,7 @@ QS/regtest-double-hybrid-1                                  libint
 QS/regtest-nlmo
 QMMM/QS/regtest-4
 Fist/regtest-8
+QS/regtest-lsroks                                           libint
 QS/regtest-cdft-4-1
 QMMM/SE/regtest_2
 QS/regtest-mp2-1                                            libint
@@ -301,7 +307,6 @@ QS/regtest-sym-1
 QS/regtest-sym-2
 QS/regtest-ot-refine-2
 NEB/regtest-2
-QS/regtest-lsroks                                           libint
 QS/regtest-nmr-2
 QS/regtest-cdft-3-1
 QS/regtest-optbas
@@ -334,6 +339,7 @@ Fist/regtest-field
 Fist/regtest-gauss
 QS/regtest-fftw                                             fftw3
 QS/regtest-elpa                                             elpa mpiranks==1||mpiranks%2==0
+QS/regtest-cusolver                                         cusolvermp
 ATOM/regtest-libxc                                          libxc
 Fist/regtest-spgr                                           spglib
 Fist/regtest-plumed2                                        plumed2
@@ -342,4 +348,4 @@ Fist/regtest-nequip                                         libtorch
 Fist/regtest-allegro                                        libtorch
 Fist/regtest-16
 DFTB/regtest-vdw
-QS/regtest-tddfpt-force-gapw
+QS/regtest-ed                                               libint
