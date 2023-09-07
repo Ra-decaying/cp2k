@@ -156,7 +156,8 @@ CONTAINS
       IF (subsys_num .EQ. 1) THEN
          ! fm_tmp1_1 = ks_12 - fermi_energy * s_12
          CALL cp_fm_to_fm(opt_pbpe%matrix_ks_kp_block(1, 1, 2), opt_pbpe%fm_tmp1_1)
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_1, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%matrix_s_kp_block(1, 1, 2))
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_1, &
+                                  -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%matrix_s_kp_block(1, 1, 2))
          ! fm_tmp2_1 = fm_tmp1_1 * dm_2_new
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), &
                             1.0_dp, opt_pbpe%fm_tmp1_1, opt_pbpe%dm_2_new, 0.0_dp, opt_pbpe%fm_tmp2_1)
@@ -168,11 +169,13 @@ CONTAINS
          CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp3_1, -0.5_dp, opt_pbpe%projection_2)
          ! Calculate matrix_ks_emb_kp_subsys(1, 1)
          CALL cp_fm_to_fm(opt_pbpe%matrix_ks_kp_block(1, 1, 1), opt_pbpe%matrix_ks_emb_kp_subsys(1, 1))
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%matrix_ks_emb_kp_subsys(1, 1), 1.0_dp, opt_pbpe%projection_2)
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%matrix_ks_emb_kp_subsys(1, 1), &
+                                  1.0_dp, opt_pbpe%projection_2)
       ELSE IF (subsys_num .EQ. 2) THEN
          ! fm_tmp1_2 = ks_21 - fermi_energy * s_21
          CALL cp_fm_to_fm(opt_pbpe%matrix_ks_kp_block(1, 2, 1), opt_pbpe%fm_tmp1_2)
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_2, -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%matrix_s_kp_block(1, 2, 1))
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%fm_tmp1_2, &
+                                  -1.0_dp * opt_pbpe%fermi_energy, opt_pbpe%matrix_s_kp_block(1, 2, 1))
          ! fm_tmp2_2 = fm_tmp1_2 * dm_1_new
          CALL parallel_gemm('N', 'N', opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), &
                             1.0_dp, opt_pbpe%fm_tmp1_2, opt_pbpe%dm_1_new, 0.0_dp, opt_pbpe%fm_tmp2_2)
@@ -184,7 +187,8 @@ CONTAINS
          CALL cp_fm_geadd(-0.5_dp, 'T', opt_pbpe%fm_tmp3_2, -0.5_dp, opt_pbpe%projection_1)
          ! Calculate matrix_ks_emb_kp_subsys(1, 2)
          CALL cp_fm_to_fm(opt_pbpe%matrix_ks_kp_block(1, 2, 2), opt_pbpe%matrix_ks_emb_kp_subsys(1, 2))
-         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%matrix_ks_emb_kp_subsys(1, 2), 1.0_dp, opt_pbpe%projection_1)
+         CALL cp_fm_scale_and_add(1.0_dp, opt_pbpe%matrix_ks_emb_kp_subsys(1, 2), &
+                                  1.0_dp, opt_pbpe%projection_1)
       END IF
 
    END SUBROUTINE calculate_embedded_ks_matrix
@@ -283,7 +287,7 @@ CONTAINS
       ! Check numbers of AOs in different subsystems
       IF (naos(1) + naos(2) .NE. naos(3)) THEN
          CPABORT("The sum of nAOs in two low-level subsystems does not equal to in the total system.")
-      END IF
+         END IF
 
       DEALLOCATE (naos)
       DEALLOCATE (nmos)
@@ -308,15 +312,31 @@ CONTAINS
       CALL get_qs_env(qs_env, matrix_ks_kp=matrix_ks_kp)
       CALL copy_dbcsr_to_fm(matrix_ks_kp(1, 1)%matrix, opt_pbpe%matrix_ks_ref_kp(1))
 
-      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_ks_ref_kp(1), opt_pbpe%matrix_ks_kp_block(1, 1, 1), opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), &
-                              1, 1, 1, 1)
-      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_ks_ref_kp(1), opt_pbpe%matrix_ks_kp_block(1, 2, 2), opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), &
-                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
+      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_ks_ref_kp(1), opt_pbpe%matrix_ks_kp_block(1, 1, 1), &
+                              opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), &
+                              1, &
+                              1, &
+                              1, &
+                              1)
+      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_ks_ref_kp(1), opt_pbpe%matrix_ks_kp_block(1, 2, 2), &
+                              opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), &
+                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, &
+                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, &
+                              1, &
+                              1)
 
-      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_ks_ref_kp(1), opt_pbpe%matrix_ks_kp_block(1, 1, 2), opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), &
-                              1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
-      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_ks_ref_kp(1), opt_pbpe%matrix_ks_kp_block(1, 2, 1), opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
-                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1, 1)
+      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_ks_ref_kp(1), opt_pbpe%matrix_ks_kp_block(1, 1, 2), &
+                              opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), &
+                              1, &
+                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, &
+                              1, &
+                              1)
+      CALL cp_fm_to_fm_submat(opt_pbpe%matrix_ks_ref_kp(1), opt_pbpe%matrix_ks_kp_block(1, 2, 1), &
+                              opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
+                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, &
+                              1, &
+                              1, &
+                              1)
 
       END SUBROUTINE copy_ks_from_qs_to_pbpe
 
@@ -635,16 +655,28 @@ CONTAINS
       CALL copy_dbcsr_to_fm(matrix_array_2d(1, 1)%matrix, opt_pbpe%matrix_s_ref_kp(1))
       CALL cp_fm_to_fm_submat(opt_pbpe%matrix_s_ref_kp(1), opt_pbpe%matrix_s_kp_block(1, 1, 1), &
                               opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(1), &
-                              1, 1, 1, 1)
+                              1, &
+                              1, &
+                              1, &
+                              1)
       CALL cp_fm_to_fm_submat(opt_pbpe%matrix_s_ref_kp(1), opt_pbpe%matrix_s_kp_block(1, 2, 2), &
                               opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(2), &
-                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
+                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, &
+                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, &
+                              1, &
+                              1)
       CALL cp_fm_to_fm_submat(opt_pbpe%matrix_s_ref_kp(1), opt_pbpe%matrix_s_kp_block(1, 1, 2), &
                               opt_pbpe%naos_in_pbpe(1), opt_pbpe%naos_in_pbpe(2), &
-                              1, opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1)
+                              1, &
+                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, &
+                              1, &
+                              1)
       CALL cp_fm_to_fm_submat(opt_pbpe%matrix_s_ref_kp(1), opt_pbpe%matrix_s_kp_block(1, 2, 1), &
                               opt_pbpe%naos_in_pbpe(2), opt_pbpe%naos_in_pbpe(1), &
-                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, 1, 1, 1)
+                              opt_pbpe%naos_in_pbpe(3) - opt_pbpe%naos_in_pbpe(2) + 1, &
+                              1, &
+                              1, &
+                              1)
 
       ! Prepare for diagonalization
       n_dep_1 = 0
@@ -759,23 +791,31 @@ CONTAINS
       after = MIN(MAX(after, 1), 16)
 
       IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
-                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO"), cp_p_file)) THEN
-         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO", extension=".Log")
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO"), &
+                                           cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, &
+                                   "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO", &
+                                   extension=".Log")
          CALL write_fm_with_basis_info(opt_pbpe%ortho_1, 4, after, qs_env=qs_env_1, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
          CALL write_fm_with_basis_info(opt_pbpe%ortho_2, 4, after, qs_env=qs_env_2, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
-         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO")
+         CALL cp_print_key_finished_output(iw, logger, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/ORTHO")
       END IF
 
       IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
-                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/OVERLAP"), cp_p_file)) THEN
-         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/OVERLAP", extension=".Log")
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/OVERLAP"), &
+                                           cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, &
+                                   "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/OVERLAP", &
+                                   extension=".Log")
          CALL write_fm_with_basis_info(opt_pbpe%matrix_s_kp_block(1, 1, 1), 4, after, qs_env=qs_env_1, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
          CALL write_fm_with_basis_info(opt_pbpe%matrix_s_kp_block(1, 2, 2), 4, after, qs_env=qs_env_2, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
-         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/OVERLAP")
+         CALL cp_print_key_finished_output(iw, logger, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/OVERLAP")
       END IF
 
    END SUBROUTINE pbpe_print_initialization_info
@@ -818,41 +858,57 @@ CONTAINS
       after = MIN(MAX(after, 1), 16)
 
       IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
-                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY"), cp_p_file)) THEN
-         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY", extension=".Log")
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY"), &
+                                           cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, &
+                                   "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY", &
+                                   extension=".Log")
          CALL write_fm_with_basis_info(opt_pbpe%dm_1, 4, after, qs_env=qs_env_1, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
          CALL write_fm_with_basis_info(opt_pbpe%dm_2, 4, after, qs_env=qs_env_2, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
-         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY")
+         CALL cp_print_key_finished_output(iw, logger, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/DENSITY")
       END IF
 
       IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
-                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES"), cp_p_file)) THEN
-         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES", extension=".Log")
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES"), &
+                                           cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, &
+                                   "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES", &
+                                   extension=".Log")
          CALL write_fm_with_basis_info(opt_pbpe%matrix_ks_emb_kp_subsys(1, 1), 4, after, qs_env=qs_env_1, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
          CALL write_fm_with_basis_info(opt_pbpe%matrix_ks_emb_kp_subsys(1, 2), 4, after, qs_env=qs_env_2, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
-         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES")
+         CALL cp_print_key_finished_output(iw, logger, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/EMBEDDED_KOHN_SHAM_MATRICES")
       END IF
 
       IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
-                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX"), cp_p_file)) THEN
-         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX", extension=".Log")
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX"), &
+                                           cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, &
+                                   "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX", &
+                                   extension=".Log")
          CALL write_fm_with_basis_info(opt_pbpe%matrix_ks_ref_kp(1), 4, after, qs_env=qs_env_ref, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
-         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX")
+         CALL cp_print_key_finished_output(iw, logger, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/KOHN_SHAM_MATRIX")
       END IF
 
       IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
-                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION"), cp_p_file)) THEN
-         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION", extension=".Log")
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION"), &
+                                           cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, &
+                                  "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION", &
+                                  extension=".Log")
          CALL write_fm_with_basis_info(opt_pbpe%projection_2, 4, after, qs_env=qs_env_1, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
          CALL write_fm_with_basis_info(opt_pbpe%projection_1, 4, after, qs_env=qs_env_2, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
-         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION")
+         CALL cp_print_key_finished_output(iw, logger, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION")
       END IF
 
       IF (output_unit .GT. 0) THEN
@@ -1217,6 +1273,7 @@ CONTAINS
       TYPE(dbcsr_p_type), DIMENSION(:,:), POINTER        :: matrix_h, matrix_ks, &
                                                             matrix_v_proj_emb_cluster, &
                                                             matrix_v_proj_emb_high_level
+      TYPE(qs_environment_type), POINTER                 :: qs_env_cluster, qs_env_high_level
       TYPE(qs_ks_env_type), POINTER                      :: ks_env
       TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), POINTER                   :: input
@@ -1230,7 +1287,10 @@ CONTAINS
 
       logger => cp_get_default_logger()
 
-      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_2_new, force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env)
+      qs_env_cluster => force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env
+      qs_env_high_level => force_env%sub_force_env(opt_pbpe%high_level_subsys_num)%force_env%qs_env
+
+      CALL update_pbpe_density_and_ks_qs_env(opt_pbpe%dm_2_new, qs_env_cluster)
 
       ! create matrices
       CALL get_qs_env(force_env%sub_force_env(opt_pbpe%ref_subsys_num)%force_env%qs_env, para_env=para_env)
@@ -1242,7 +1302,7 @@ CONTAINS
       CALL cp_fm_create(fm_ks, fm_struct, name="fm_ks")
       CALL cp_fm_create(fm_v_proj_emb, fm_struct, name="fm_v_proj_emb")
 
-      CALL get_qs_env(force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, matrix_ks_kp=matrix_ks)
+      CALL get_qs_env(qs_env_cluster, matrix_ks_kp=matrix_ks)
       CALL copy_dbcsr_to_fm(matrix_ks(1, 1)%matrix, fm_ks)
       CALL cp_fm_to_fm(opt_pbpe%matrix_ks_emb_kp_subsys(1, 2), fm_v_proj_emb)
       CALL cp_fm_scale_and_add(1.0_dp, fm_v_proj_emb, -1.0_dp, fm_ks)
@@ -1253,8 +1313,7 @@ CONTAINS
                         template=matrix_ks(1, 1)%matrix)
       CALL copy_fm_to_dbcsr(fm_v_proj_emb, matrix_v_proj_emb_cluster(1, 1)%matrix)
 
-      CALL get_qs_env(force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, &
-                      matrix_h_kp=matrix_h, ks_env=ks_env)
+      CALL get_qs_env(qs_env_cluster, matrix_h_kp=matrix_h, ks_env=ks_env)
       CPASSERT(ASSOCIATED(ks_env))
       CALL set_ks_env(ks_env, matrix_v_proj_emb_kp=matrix_v_proj_emb_cluster)
       CALL dbcsr_add(matrix_h(1, 1)%matrix, matrix_v_proj_emb_cluster(1, 1)%matrix, 1.0_dp, 1.0_dp)
@@ -1265,22 +1324,26 @@ CONTAINS
                         template=matrix_ks(1, 1)%matrix)
       CALL copy_fm_to_dbcsr(fm_v_proj_emb, matrix_v_proj_emb_high_level(1, 1)%matrix)
 
-      CALL get_qs_env(force_env%sub_force_env(opt_pbpe%high_level_subsys_num)%force_env%qs_env, ks_env=ks_env)
+      CALL get_qs_env(qs_env_high_level, ks_env=ks_env)
       CPASSERT(ASSOCIATED(ks_env))
       CALL set_ks_env(ks_env, matrix_v_proj_emb_kp=matrix_v_proj_emb_high_level)
 
-      CALL get_qs_env(qs_env=force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, input=input, para_env=para_env)
+      CALL get_qs_env(qs_env_cluster, input=input, para_env=para_env)
 
       CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%NDIGITS", i_val=after)
       CALL section_vals_val_get(input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES%OMIT_HEADERS", l_val=omit_headers)
       after = MIN(MAX(after, 1), 16)
 
       IF (BTEST(cp_print_key_should_output(logger%iter_info, input, &
-                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION_AND_EMBEDDING_POTENTIAL"), cp_p_file)) THEN
-         iw = cp_print_key_unit_nr(logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION_AND_EMBEDDING_POTENTIAL", extension=".Log")
-         CALL write_fm_with_basis_info(fm_v_proj_emb, 4, after, qs_env=force_env%sub_force_env(opt_pbpe%cluster_subsys_num)%force_env%qs_env, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION_AND_EMBEDDING_POTENTIAL"), &
+                                           cp_p_file)) THEN
+         iw = cp_print_key_unit_nr(logger, input, &
+                                   "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION_AND_EMBEDDING_POTENTIAL", &
+                                   extension=".Log")
+         CALL write_fm_with_basis_info(fm_v_proj_emb, 4, after, qs_env_cluster, &
                                        para_env=para_env, output_unit=iw, omit_headers=omit_headers)
-         CALL cp_print_key_finished_output(iw, logger, input, "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION_AND_EMBEDDING_POTENTIAL")
+         CALL cp_print_key_finished_output(iw, logger, input, &
+                                           "DFT%QS%OPT_PBPE%PRINT%AO_MATRICES/PROJECTION_AND_EMBEDDING_POTENTIAL")
       END IF
 
       CALL cp_fm_release(fm_ks)
