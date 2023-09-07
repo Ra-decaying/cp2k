@@ -128,33 +128,48 @@ MODULE embed_types
 
    TYPE opt_pbpe_pot_type
       INTEGER                                          :: i_iter = -1, n_iter = -1, &
-                                                          cluster_subsys_num = -1, environment_subsys_num = -1, &
-                                                          high_level_subsys_num = -1, ref_subsys_num = -1
+                                                          cluster_subsys_num = -1, &
+                                                          environment_subsys_num = -1, &
+                                                          high_level_subsys_num = -1, &
+                                                          ref_subsys_num = -1
       INTEGER, ALLOCATABLE, DIMENSION(:)               :: all_nspins, naos, naos_in_pbpe, nmos
-      LOGICAL                                          :: abs_localization = .TRUE., change_spin = .FALSE., &
+      LOGICAL                                          :: abs_localization = .TRUE., &
+                                                          change_spin = .FALSE., &
                                                           converged = .FALSE., do_kpoints = .FALSE., &
-                                                          open_shell_embed = .FALSE., should_exit_scf_loop = .FALSE.
+                                                          open_shell_embed = .FALSE., &
+                                                          should_exit_scf_loop = .FALSE.
       REAL(KIND=dp)                                    :: conv_max = 0.0_dp, conv_rmse = 0.0_dp, &
-                                                          homo_energy_1 = 0.0_dp, homo_energy_2 = 0.0_dp, fermi_energy = 0.0_dp, &
-                                                          max_in_dm_1_diff = 0.0_dp, max_in_dm_2_diff = 0.0_dp, max_in_dm_total_diff = 0.0_dp, &
-                                                          norm_dm_1_diff = 0.0_dp, norm_dm_2_diff = 0.0_dp, norm_dm_total_diff = 0.0_dp
+                                                          homo_energy_1 = 0.0_dp, homo_energy_2 = 0.0_dp, &
+                                                          fermi_energy = 0.0_dp, &
+                                                          max_in_dm_1_diff = 0.0_dp, &
+                                                          max_in_dm_2_diff = 0.0_dp, &
+                                                          max_in_dm_total_diff = 0.0_dp, &
+                                                          norm_dm_1_diff = 0.0_dp, &
+                                                          norm_dm_2_diff = 0.0_dp, &
+                                                          norm_dm_total_diff = 0.0_dp
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)         :: max_diff
-      TYPE(cp_fm_type), DIMENSION(:), POINTER          :: matrix_ks_ref_kp => NULL(), matrix_s_ref_kp => NULL()
+      TYPE(cp_fm_type), DIMENSION(:), POINTER          :: matrix_ks_ref_kp => NULL(), &
+                                                          matrix_s_ref_kp => NULL()
       TYPE(cp_fm_type), DIMENSION(:, :), POINTER       :: matrix_ks_emb_kp_subsys => NULL()
-      TYPE(cp_fm_type), DIMENSION(:, :, :), POINTER    :: matrix_ks_kp_block => NULL(), matrix_s_kp_block => NULL()
-      TYPE(cp_fm_type), POINTER                        :: dm_1 => NULL(), dm_2 => NULL(), dm_total => NULL(), &
-                                                          dm_1_new => NULL(), dm_2_new => NULL(), dm_total_new => NULL(), &
-                                                          dm_1_beta => NULL(), dm_2_beta => NULL(), dm_total_beta => NULL(), &
-                                                          dm_1_beta_new => NULL(), dm_2_beta_new => NULL(), dm_total_beta_new => NULL(), &
-                                                          dm_1_diff => NULL(), dm_2_diff => NULL(), dm_total_diff => NULL(), &
-                                                          dm_1_diff_beta => NULL(), dm_2_diff_beta => NULL(), dm_total_diff_beta => NULL(), &
+      TYPE(cp_fm_type), DIMENSION(:, :, :), POINTER    :: matrix_ks_kp_block => NULL(), &
+                                                          matrix_s_kp_block => NULL()
+      TYPE(cp_fm_type), POINTER                        :: dm_1 => NULL(), dm_1_new => NULL(), &
+                                                          dm_2 => NULL(), dm_2_new => NULL(), &
+                                                          dm_total => NULL(), dm_total_new => NULL(), &
+                                                          dm_1_beta => NULL(), dm_2_beta => NULL(), &
+                                                          dm_1_beta_new => NULL(), dm_2_beta_new => NULL(), &
+                                                          dm_total_beta => NULL(), dm_total_beta_new => NULL(), &
+                                                          dm_1_diff => NULL(), dm_1_diff_beta => NULL(), &
+                                                          dm_2_diff => NULL(), dm_2_diff_beta => NULL(), &
+                                                          dm_total_diff => NULL(), dm_total_diff_beta => NULL(), &
                                                           work1_1 => NULL(), work1_2 => NULL(), &
                                                           work2_1 => NULL(), work2_2 => NULL(), &
                                                           ortho_1 => NULL(), ortho_2 => NULL(), &
                                                           projection_1 => NULL(), projection_2 => NULL(), &
                                                           projection_environment => NULL(), &
-                                                          fm_tmp1_1 => NULL(), fm_tmp2_1 => NULL(), fm_tmp3_1 => NULL(), &
-                                                          fm_tmp1_2 => NULL(), fm_tmp2_2 => NULL(), fm_tmp3_2 => NULL()
+                                                          fm_tmp1_1 => NULL(), fm_tmp1_2 => NULL(), &
+                                                          fm_tmp2_1 => NULL(), fm_tmp2_2 => NULL(), &
+                                                          fm_tmp3_1 => NULL(), fm_tmp3_2 => NULL()
       TYPE(mo_set_type), DIMENSION(:, :), POINTER      :: mos_kp_subsys => NULL()
    END TYPE opt_pbpe_pot_type
 
