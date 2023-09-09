@@ -286,7 +286,7 @@ CONTAINS
 
       ! Check numbers of AOs in different subsystems
       IF (naos(1) + naos(2) .NE. naos(3)) THEN
-         CPABORT("The sum of nAOs in two low-level subsystems does not equal to in the total system.")
+         CPABORT("naos not consistent in ther environment, cluster and reference subsystems")
          END IF
 
       DEALLOCATE (naos)
